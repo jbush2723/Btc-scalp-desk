@@ -66,3 +66,14 @@ header p{margin:0}
 #forecastMarket{overflow-wrap:anywhere}
 @media(max-width:800px){.forecast-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.forecast-card{padding:12px}.forecast-grid{gap:6px}.forecast-grid .big{font-size:18px}}
+
+/* Live BRTI candles, 15-second bars in all timeframe views */
+.candle-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:7px 0 3px}
+.candle-controls button{padding:5px 11px;font-size:11px;border:1px solid #405571;background:#0e192a}
+.candle-controls button.selected{background:#295ecc;border-color:#70a7ff}
+.candle-controls span{margin-left:auto}
+#brtiChart[hidden]{display:none!important}
+#brtiCandleChart{width:100%;height:205px;display:block;min-height:205px;background:#0e192a;border:1px solid #26354c;border-radius:8px}
+#candleDetails{margin:4px 0}
+@media(max-width:900px){#brtiCandleChart{height:245px}}
+@media(max-width:480px){#brtiCandleChart{height:195px;min-height:195px}.candle-controls span{width:100%;margin-left:0}}
