@@ -10,6 +10,7 @@ import {startCryptometer} from './cryptometer-ui.js';
 import {startSignalAudit} from './signal-audit.js';
 import {settlementProjection,settlementEdge} from './settlement-forecast.js';
 import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
+import {startRoundHistory} from './round-history.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -75,6 +76,8 @@ forecastPanel.innerHTML=`<div class="section-head"><h2>Higher-risk · 15-minute 
 <p class="small" id="forecastMarket">Waiting for official price history.</p>
 <p class="small muted" id="forecastExplanation">Experimental 90-second historical-volatility model; uncalibrated normal-return assumptions. Percentages are modeled estimates, not verified probabilities or a reliable trading edge. The settlement outcome uses the exchange's specified index and rules. Unlike scalp exits, holding to close can lose the entire stake; fees and execution matter.</p>`;
 cockpit.insertAdjacentElement('afterend',forecastPanel);
+const roundHistory=startRoundHistory();
+forecastPanel.insertAdjacentElement('afterend',roundHistory.panel);
 const usdForecast=n=>Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}):'—';
 
 const quoteStrip=document.createElement('p');
@@ -198,7 +201,8 @@ function render() {
   const candleSnapshot=getBrtiSnapshot();
   const candleRange=candleRanges[candleView];
   const chartNow=Number.isFinite(candleSnapshot?.sourceTime)?candleSnapshot.sourceTime:now;
-  const candleRows=candlesFromTicks(candleSnapshot?.history,{now:chartNow,windowMs:candleRange});
+  const historicalTicks=roundHistory.observe({market:current,snapshot:candleSnapshot,now});
+  const candleRows=candlesFromTicks(historicalTicks,{now:chartNow,windowMs:candleRange});
   drawBrtiCandles(candleChart,candleRows,{now:chartNow,windowMs:candleRange,strike:target});
   for(const button of candleControls.querySelectorAll('button')){
     const selected=button.dataset.view===candleView;
@@ -207,7 +211,7 @@ function render() {
   }
   const covered=candleRows.length?(candleRows.at(-1).time-candleRows[0].time)/60000:0;
   candleDetails.textContent=!candleSnapshot?
-    'Waiting for live official BRTI. Connect BRTI to display genuine candles.':
+    'BRTI unavailable; previously recorded chart history remains visible where available.':
     candleRows.length+' observed 15-second candles · '+(covered>0?covered.toFixed(1):'0.0')+' minutes of available chart span. Missing candles are never filled; 30m and 1h views build as the backend collects history.';
 
   const reading=applyBrtiVeto(unfiltered,brtiContext);
