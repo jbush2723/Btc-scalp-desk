@@ -82,5 +82,5 @@ export function startRoundHistory(){
   return state.ticks.map(([time,value])=>({time,value}));
  }
  render();
- return {panel,observe};
+ return {panel,observe,getHistory:()=>({ticks:state.ticks.map(p=>[...p]),rounds:state.rounds.map(r=>({...r}))})};
 }
