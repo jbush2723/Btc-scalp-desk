@@ -8,26 +8,36 @@ function normalize(t){
  if(!Number.isFinite(at)||!Number.isFinite(qty)||qty<=0||t.is_block_trade===true)return null;
  return {at,qty,side:['yes','no'].includes(side)?side:'unknown',id:String(t.trade_id||'')};
 }
+// Historical records are sorted once when imported. Binary search the 60s window
+// to avoid rescanning every older trade at every 10-second checkpoint.
 export function flowAt(trades,at){
- const rows=trades.filter(t=>t.at<=at),window=seconds=>{
-  const recent=rows.filter(t=>t.at>at-seconds*1000);
-  const yes=recent.reduce((a,t)=>a+(t.side==='yes'?t.qty:0),0);
-  const no=recent.reduce((a,t)=>a+(t.side==='no'?t.qty:0),0);
-  const unknown=recent.reduce((a,t)=>a+(t.side==='unknown'?t.qty:0),0);
-  return {yes,no,unknown,count:recent.length,share:yes+no>0?yes/(yes+no):null};
- };
+ let lo=0,hi=trades.length;
+ while(lo<hi){const mid=(lo+hi)>>1;if(trades[mid].at<=at-60000)lo=mid+1;else hi=mid;}
+ const window=seconds=>({yes:0,no:0,unknown:0,count:0,share:null});
  const w10=window(10),w30=window(30),w60=window(60);
+ for(let i=lo;i<trades.length&&trades[i].at<=at;i++){
+  const t=trades[i];
+  for(const [seconds,acc] of [[10,w10],[30,w30],[60,w60]]){
+   if(t.at<=at-seconds*1000)continue;
+   acc[t.side==='yes'?'yes':t.side==='no'?'no':'unknown']+=t.qty;
+   acc.count++;
+  }
+ }
+ for(const w of [w10,w30,w60]){
+  if(w.yes+w.no>0)w.share=w.yes/(w.yes+w.no);
+ }
  const reliable=[w10,w30,w60].every(w=>w.unknown/(w.yes+w.no+w.unknown||1)<=.1);
  return {w10,w30,w60,up:reliable&&w10.count>=5&&w10.yes+w10.no>=20&&w10.share>=.6&&w30.share>=.55&&w60.share>=.5,
  down:reliable&&w10.count>=5&&w10.yes+w10.no>=20&&w10.share<=.4&&w30.share<=.45&&w60.share<=.5};
 }
+
 export function reviewTradeFlow(markets,records){
  let imported=0,complete=0,up=0,down=0,neutral=0,notEvaluable=0;
  const rows=[];
  for(const m of markets){
   const rec=records[m.ticker];if(!rec)continue;imported++;
   if(!rec.complete){notEvaluable++;continue;}complete++;
-  const ticks=rec.trades||[];
+  const ticks=(rec.trades||[]).slice().sort((a,b)=>a.at-b.at);
   const open=Number(m.openAt),close=Number(m.closeAt);
   if(!ticks.length||!Number.isFinite(open)||!Number.isFinite(close)){neutral++;continue;}
   // Evaluate once at each full 10s time boundary; historical event timestamps are exact.
