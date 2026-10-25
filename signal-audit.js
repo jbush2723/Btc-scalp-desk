@@ -25,7 +25,7 @@ export class SignalAudit{
    for(const target of TARGETS)if(row.hits[target]===null&&gross>=target)row.hits[target]=Math.max(0,Math.round((at-row.at)/1000));
    for(const check of CHECKS){
     if(row.checkpoints[check]!==null||row.missed.includes(check)||at<row.at+check*1000)continue;
-    if(at-row.at-check*1000<=GAP/1000)row.checkpoints[check]=gross;
+    if(at-row.at-check*1000<=GAP)row.checkpoints[check]=gross;
     else row.missed.push(check);
    }
    if(at>=row.at+HORIZON){row.status=at-row.at-HORIZON<=GAP?'complete':'late';row.finalGross=gross;}
@@ -63,7 +63,7 @@ export class SignalAudit{
 }
 export function startSignalAudit(){
  const section=document.createElement('section');section.className='card';
- section.innerHTML='<h2>Scalp audit · up to 7 minutes</h2><p class="small muted">Paper-only observations: first confirmed UP/NO or DOWN/NO-equivalent signal per contract side, entry at the ask, subsequent exits measured at that same side’s bid. Tracks first observed +15%, +20%, +30%, +40% gross return, and marks at 30s, 60s, 120s, 300s and 420s. These are observed quotes, not guaranteed fills. Browser tab must remain visible. A market closing early or a data gap leaves an incomplete sample. No fees, slippage or actual positions included.</p><p id="auditSummary" role="status">Collecting new confirmed signals.</p><div class="table-scroll"><table><thead><tr><th>Contract</th><th>Side</th><th>Status</th><th>Entry ask</th><th>Best observed</th><th>Worst observed</th><th>First +15%</th><th>First +40%</th><th>7m mark</th></tr></thead><tbody id="auditRows"></tbody></table></div><button type="button" class="secondary" id="auditExport">Download scalp audit CSV</button><p class="small muted">Target hit counts use only complete 7-minute observations. Percentages are gross return relative to entry ask, not price changes in cents. Previous 60-second audit data remains in this browser’s older storage key.</p>';
+ section.innerHTML='<h2>Scalp audit · up to 7 minutes</h2><p class="small muted">Paper-only observations: first confirmed UP (YES) or DOWN (NO) signal per contract side, entry at the ask, subsequent exits measured at that same side’s bid. Tracks first observed +15%, +20%, +30%, +40% gross return, and marks at 30s, 60s, 120s, 300s and 420s. These are observed quotes, not guaranteed fills. Browser tab must remain visible. A market closing early or a data gap leaves an incomplete sample. No fees, slippage or actual positions included.</p><p id="auditSummary" role="status">Collecting new confirmed signals.</p><div class="table-scroll"><table><thead><tr><th>Contract</th><th>Side</th><th>Status</th><th>Entry ask</th><th>Best observed</th><th>Worst observed</th><th>First +15%</th><th>First +40%</th><th>7m mark</th></tr></thead><tbody id="auditRows"></tbody></table></div><button type="button" class="secondary" id="auditExport">Download scalp audit CSV</button><p class="small muted">Target hit counts use only complete 7-minute observations. Percentages are gross return relative to entry ask, not price changes in cents. Previous 60-second audit data remains in this browser’s older storage key.</p>';
  document.querySelector('#signalCard').insertAdjacentElement('afterend',section);
  const audit=new SignalAudit();
  section.querySelector('#auditExport').onclick=()=>{
