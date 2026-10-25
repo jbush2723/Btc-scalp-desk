@@ -8,6 +8,7 @@ import {startBrti,getBrtiSnapshot} from './brti-ui.js';
 import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {startCryptometer} from './cryptometer-ui.js';
 import {startSignalAudit} from './signal-audit.js';
+import {settlementProjection,settlementEdge} from './settlement-forecast.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -35,6 +36,21 @@ cockpit.setAttribute('aria-label','Live price chart and trading levels');
 const brtiCard=$('brtiHeading').closest('section'),planCard=$('entryPlanCard');
 document.querySelector('header').insertAdjacentElement('afterend',cockpit);
 cockpit.append(brtiCard,planCard);
+const forecastPanel=document.createElement('section');
+forecastPanel.id='settlementForecast';
+forecastPanel.className='card forecast-card';
+forecastPanel.innerHTML=`<div class="section-head"><h2>Higher-risk · 15-minute settlement forecast</h2><span class="pill warn" id="forecastBadge">WARMING UP</span></div>
+<div class="grid forecast-grid">
+<div class="metric"><h3>Projected BRTI at close</h3><div class="big" id="forecastPrice">—</div></div>
+<div class="metric"><h3>Illustrative 90% price range</h3><div class="big" id="forecastRange">—</div></div>
+<div class="metric"><h3>Modeled finish above / below</h3><div class="big" id="forecastOdds">—</div></div>
+<div class="metric"><h3>Riskier settlement lean</h3><div class="big" id="forecastLean">WAIT</div></div>
+</div>
+<p class="small" id="forecastMarket">Waiting for official price history.</p>
+<p class="small muted" id="forecastExplanation">Experimental 90-second historical-volatility model; uncalibrated normal-return assumptions. Percentages are modeled estimates, not verified probabilities or a reliable trading edge. The settlement outcome uses the exchange's specified index and rules. Unlike scalp exits, holding to close can lose the entire stake; fees and execution matter.</p>`;
+cockpit.insertAdjacentElement('afterend',forecastPanel);
+const usdForecast=n=>Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}):'—';
+
 const quoteStrip=document.createElement('p');
 quoteStrip.id='cockpitQuotes';quoteStrip.className='small mono';
 quoteStrip.textContent='Waiting for YES/NO executable quotes';
@@ -154,6 +170,20 @@ function render() {
   const target=active?finite(current.floor_strike):null;
   const brtiContext=evaluateBrtiContext(getBrtiSnapshot(),target);
   const reading=applyBrtiVeto(unfiltered,brtiContext);
+  const forecast=settlementProjection({snapshot:getBrtiSnapshot(),strike:target,closeAt:active?closeTime(current):NaN,now});
+  const odds=settlementEdge(forecast,q);
+  put('forecastPrice',forecast.ready?usdForecast(forecast.center):'—');
+  put('forecastRange',forecast.ready?usdForecast(forecast.low)+' – '+usdForecast(forecast.high):'—');
+  put('forecastOdds',forecast.ready?(100*forecast.pAbove).toFixed(0)+'% / '+(100*forecast.pBelow).toFixed(0)+'%':'—');
+  put('forecastLean',forecast.ready?(forecast.direction==='TOO CLOSE'?'WAIT':forecast.direction==='UP'?'UP · YES':'DOWN · NO'):'WAIT');
+  put('forecastBadge',!forecast.ready?'WARMING UP':odds.worthConsidering?'SPECULATIVE':'MODEL ONLY');
+  $('forecastBadge').className='pill '+(forecast.ready&&odds.worthConsidering?'warn':'');
+  put('forecastMarket',!forecast.ready?forecast.reason:
+    'BRTI now '+usdForecast(getBrtiSnapshot()?.price)+' · strike '+usdForecast(target)+
+    ' · '+Math.ceil(forecast.secondsLeft/60)+' min to close'+
+    (odds.side?' · '+odds.side+' ask '+cents(odds.ask)+
+      ' · model minus ask '+(odds.edge*100>=0?'+':'')+(odds.edge*100).toFixed(1)+' percentage points. ':' · ')+odds.reason);
+
   const fmtPct=n=>n===null?'not enough history':(n>=0?'+':'')+n.toFixed(4)+'%';
   put('brtiContext',brtiContext.status==='live'?
     'Official BRTI '+brtiContext.direction+' · 30s '+fmtPct(brtiContext.changePercent)+' · target gap '+(brtiContext.distance===null?'unavailable':(brtiContext.distance>=0?'+':'')+brtiContext.distance.toFixed(2)+' USD')+
