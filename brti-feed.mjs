@@ -33,7 +33,7 @@ export class BrtiFeed {
       const creds=await this.credentials();
       if(this.stopped)return;
       if(!creds){this.status='setup_required';this.nextAt=this.now()+5000;return;}
-      this.status='connecting';this.tick=null;this.history=[];this.lastTickAt=this.now();
+      this.status='connecting';this.tick=null;this.lastTickAt=this.now();
       const started=this.now();
       const socket=new this.Socket('wss://external-api-ws.kalshi.com/trade-api/ws/v2',{
         headers:authHeaders(creds.keyId,creds.key),handshakeTimeout:10000,maxPayload:256*1024,followRedirects:false
@@ -53,7 +53,7 @@ export class BrtiFeed {
         const tick=parseTick(frame,this.now()+this.clockOffset);
         if(!tick||this.tick&&tick.time<=this.tick.time)return;
         this.tick=tick;this.status='live';this.lastTickAt=this.now();this.failures=0;
-        this.history.push({time:tick.time,value:tick.value});this.history=this.history.filter(p=>p.time>=tick.time-15*60000).slice(-900);
+        this.history.push({time:tick.time,value:tick.value});this.history=this.history.filter(p=>p.time>=tick.time-60*60000).slice(-4000);
       });
       socket.on('unexpected-response',(_req,res)=>{
         this.status=[401,403].includes(res.statusCode)?'access_denied':'connection_error';
@@ -61,7 +61,7 @@ export class BrtiFeed {
       });
       socket.on('error',()=>{if(!['access_denied','subscription_denied'].includes(this.status))this.status='connection_error';});
       socket.on('close',()=>{
-        if(this.socket!==socket)return;this.socket=null;this.tick=null;this.history=[];
+        if(this.socket!==socket)return;this.socket=null;this.tick=null;
         if(!['access_denied','subscription_denied','connection_error'].includes(this.status))this.status='reconnecting';
         this.nextAt=Math.max(this.nextAt,this.now()+Math.min(60000,2000*2**Math.min(this.failures++,5)));
       });
