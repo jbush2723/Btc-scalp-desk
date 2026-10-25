@@ -29,6 +29,21 @@ document.querySelector('#signalCard').insertAdjacentElement('beforebegin',contex
 const recordSignalAudit=startSignalAudit();
 startCryptometer(()=>base);
 startBrti(()=>base,()=>current&&closeTime(current)>Date.now()?{price:finite(current.floor_strike),ticker:current.ticker}:null);
+const cockpit=document.createElement('div');
+cockpit.id='tradeCockpit';
+cockpit.setAttribute('aria-label','Live price chart and trading levels');
+const brtiCard=$('brtiHeading').closest('section'),planCard=$('entryPlanCard');
+document.querySelector('header').insertAdjacentElement('afterend',cockpit);
+cockpit.append(brtiCard,planCard);
+const quoteStrip=document.createElement('p');
+quoteStrip.id='cockpitQuotes';quoteStrip.className='small mono';
+quoteStrip.textContent='Waiting for YES/NO executable quotes';
+planCard.querySelector('.section-head').insertAdjacentElement('afterend',quoteStrip);
+const countdown=document.createElement('p');
+countdown.id='cockpitCountdown';countdown.className='small muted';
+countdown.textContent='Current contract: waiting';
+quoteStrip.insertAdjacentElement('afterend',countdown);
+
 $('feedUrl').value = storage.get('btcScalpApi');
 
 function rows(id, values) {
@@ -132,6 +147,8 @@ function render() {
   }
   const seconds=active ? Math.max(0,Math.ceil((closeTime(current)-now)/1000)) : null;
   put('liveClock',seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0'));
+  put('cockpitCountdown','Market '+(current?.ticker||'waiting')+' · closes in '+(seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')));
+  put('cockpitQuotes','YES: bid '+cents(q?.yesBid??null)+' / ask '+cents(q?.yesAsk??null)+'   ·   NO: bid '+cents(q?.noBid??null)+' / ask '+cents(q?.noAsk??null));
   const healthy=marketFresh && bookFresh && flowFresh && complete && !lastError;
   const unfiltered=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
   const target=active?finite(current.floor_strike):null;
