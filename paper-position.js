@@ -65,6 +65,10 @@ export function advancePaperPosition(previous,{plan=null,reading=null,ticker=nul
   const cutoff=Math.min(old.enteredAt+HOLD_MS,old.closeAt-CLOSE_BUFFER);
   const badMarket=ticker&&ticker!==old.ticker;
   const bookIsCurrent=quoteFresh&&ticker===old.ticker&&snapTime>old.lastQuoteAt;
+  if(bookIsCurrent&&snapTime-old.lastQuoteAt>QUOTE_GAP){
+   finish('UNRESOLVED · DATA GAP',null,null,false);
+   return {state,message};
+  }
   if(bookIsCurrent&&snapTime<=cutoff){
    const bid=quote[old.side+'Bid'],size=quote[old.side+'BidSize'];
    if(valid(bid)&&bid<=1){
