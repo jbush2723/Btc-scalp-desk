@@ -7,8 +7,16 @@ export function upstreamPath(url) {
   if([...p.keys()].some(k=>p.getAll(k).length!==1)) throw Error('Duplicate parameter');
   let allowed;
   if(path==='/markets') {
-    allowed=['series_ticker','status','limit'];
-    if(p.get('series_ticker')!=='KXBTC15M'||p.get('status')!=='open') throw Error('Only open BTC markets are available');
+    allowed=['series_ticker','status','limit','cursor'];
+    if(p.get('series_ticker')!=='KXBTC15M'||!['open','settled','closed'].includes(p.get('status'))) throw Error('Only BTC 15m markets are available');
+  } else if(path==='/historical/markets') {
+    allowed=['series_ticker','limit','cursor'];
+    if(p.get('series_ticker')!=='KXBTC15M')throw Error('Only BTC 15m history is allowed');
+  } else if(/^\/(?:historical\/markets|series\/KXBTC15M\/markets)\/KXBTC15M-[A-Z0-9-]{1,60}\/candlesticks$/.test(path)) {
+    allowed=['start_ts','end_ts','period_interval'];
+    if(p.get('period_interval')!=='1')throw Error('Use actual 1-minute Kalshi candles');
+    const start=Number(p.get('start_ts')),end=Number(p.get('end_ts'));
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<=0||end<=start||end-start>86400)throw Error('Invalid candle time range');
   } else if(path==='/markets/trades') {
     allowed=['ticker','limit','min_ts','max_ts','cursor','is_block_trade'];
     if(!TICKER.test(p.get('ticker')||''))throw Error('Invalid BTC ticker');
@@ -23,6 +31,7 @@ export function upstreamPath(url) {
   for(const [k,v] of p) {
     if(!allowed.includes(k))throw Error('Unsupported parameter');
     if(k==='limit'&&(!/^\d+$/.test(v)||Number(v)<1||Number(v)>1000))throw Error('Invalid limit');
+    if(k==='cursor'&&v.length>2048)throw Error('Cursor too long');
     if(k==='depth'&&(!/^\d+$/.test(v)||Number(v)<1||Number(v)>100))throw Error('Invalid depth');
   }
   p.sort();return path+(p.size?'?'+p.toString():'');
