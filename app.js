@@ -66,6 +66,12 @@ candleChart.insertAdjacentElement('afterend',candleDetails);
 document.querySelector('header').insertAdjacentElement('afterend',cockpit);
 cockpit.append(brtiCard,planCard);
 const positionTracker=startPositionTracker();
+let lastConfirmed=null;
+const lastSignal=document.createElement('p');
+lastSignal.id='lastConfirmedSetup';lastSignal.className='small muted';
+lastSignal.textContent='No confirmed setup recorded in this round.';
+planCard.querySelector('#planCall')?.insertAdjacentElement('afterend',lastSignal);
+
 cockpit.insertAdjacentElement('afterend',positionTracker.section);
 const forecastPanel=document.createElement('section');
 forecastPanel.id='settlementForecast';
@@ -264,6 +270,16 @@ function render() {
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   const plan=frozenPlan||latestPlan;
+  if(latestPlan.available&&['UP','DOWN'].includes(reading.action)){
+    lastConfirmed={ticker:current?.ticker,at:now,side:latestPlan.side,entry:latestPlan.entry};
+  }
+  if(lastConfirmed&&lastConfirmed.ticker!==current?.ticker)lastConfirmed=null;
+  put('lastConfirmedSetup',lastConfirmed?
+    'Last confirmed '+lastConfirmed.side.toUpperCase()+' setup at '+cents(lastConfirmed.entry)+
+    ' · '+Math.floor((now-lastConfirmed.at)/1000)+'s ago'+
+    (now-lastConfirmed.at>10000?' · EXPIRED — historical reference, NOT a new entry':' · confirm actual fill to track a position'):
+    'No confirmed entry setup recorded in this round.');
+
   put('planCall',plan.available?(frozenPlan?'REFERENCE · '+plan.side.toUpperCase()+' entry '+cents(plan.entry):'SUGGESTED ENTRY · BUY '+plan.side.toUpperCase()+' at '+cents(plan.entry)+' or lower'):(reading.action==='WAIT'?'WAIT · Setup not ready':'SIT OUT · No entry suggested'));
   put('planSide',plan.available?(frozenPlan?'FROZEN · ':'BUY ')+plan.side.toUpperCase():'NO ENTRY');
   const planState=plan.available?(plan.side.toUpperCase()==='YES'?'yes':'no'):(reading.action==='WAIT'?'wait':'sitout');
