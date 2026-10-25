@@ -132,3 +132,13 @@ header p{margin:0}
 .replay-metrics .metric .big{font-size:clamp(17px,2vw,25px)}
 #replayStatus{overflow-wrap:anywhere}
 @media(max-width:720px){.replay-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+.scenario-card{background:#0e192a;border:1px solid #364b67;border-radius:10px;padding:15px;margin:16px 0}
+.scenario-inputs{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.scenario-inputs label{margin:0;font-size:12px}
+.scenario-inputs input{margin-top:5px}
+.scenario-card .replay-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.scenario-card .metric{padding:12px;min-width:0}
+.scenario-card .big{font-size:23px;overflow-wrap:anywhere}
+@media(max-width:750px){.scenario-inputs,.scenario-card .replay-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
