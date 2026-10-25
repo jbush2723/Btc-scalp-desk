@@ -153,3 +153,11 @@ header p{margin:0}
 .kalshi-history #historicChart{width:100%;height:270px;background:#0e192a;border:1px solid #26354c;border-radius:8px}
 .kalshi-history .toolbar select{background:#0b1424;color:white;border:1px solid #53657d;border-radius:6px;padding:8px}
 @media(max-width:760px){.kalshi-history #historicChart{height:215px}}
+
+
+.scalp-projection{background:#0e192a;border:1px solid #32475e;border-radius:9px;padding:10px;margin:9px 0}
+.scalp-projection-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.scalp-projection-grid>div{min-width:0}
+.scalp-projection-grid .big{font-size:clamp(17px,2vw,24px);overflow-wrap:anywhere}
+.scalp-projection p{margin:5px 0}
+@media(max-width:500px){.scalp-projection-grid{grid-template-columns:1fr 1fr}.scalp-projection-grid>div:last-child{grid-column:span 2}}
