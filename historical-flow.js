@@ -6,19 +6,21 @@ function save(rows){try{localStorage.setItem(KEY,JSON.stringify(rows));return tr
 function normalize(t){
  const at=Date.parse(t.created_time),qty=Number(t.count_fp??t.count);
  const side=t.taker_outcome_side??t.taker_side;
- if(!Number.isFinite(at)||!Number.isFinite(qty)||qty<=0||!['yes','no'].includes(side)||t.is_block_trade===true)return null;
- return {at,qty,side,id:String(t.trade_id||'')};
+ if(!Number.isFinite(at)||!Number.isFinite(qty)||qty<=0||t.is_block_trade===true)return null;
+ return {at,qty,side:['yes','no'].includes(side)?side:'unknown',id:String(t.trade_id||'')};
 }
 export function flowAt(trades,at){
  const rows=trades.filter(t=>t.at<=at),window=seconds=>{
   const recent=rows.filter(t=>t.at>at-seconds*1000);
   const yes=recent.reduce((a,t)=>a+(t.side==='yes'?t.qty:0),0);
   const no=recent.reduce((a,t)=>a+(t.side==='no'?t.qty:0),0);
-  return {yes,no,count:recent.length,share:yes+no>0?yes/(yes+no):null};
+  const unknown=recent.reduce((a,t)=>a+(t.side==='unknown'?t.qty:0),0);
+  return {yes,no,unknown,count:recent.length,share:yes+no>0?yes/(yes+no):null};
  };
  const w10=window(10),w30=window(30),w60=window(60);
- return {w10,w30,w60,up:w10.count>=5&&w10.yes+w10.no>=20&&w10.share>=.6&&w30.share>=.55&&w60.share>=.5,
- down:w10.count>=5&&w10.yes+w10.no>=20&&w10.share<=.4&&w30.share<=.45&&w60.share<=.5};
+ const reliable=[w10,w30,w60].every(w=>w.unknown/(w.yes+w.no+w.unknown||1)<=.1);
+ return {w10,w30,w60,up:reliable&&w10.count>=5&&w10.yes+w10.no>=20&&w10.share>=.6&&w30.share>=.55&&w60.share>=.5,
+ down:reliable&&w10.count>=5&&w10.yes+w10.no>=20&&w10.share<=.4&&w30.share<=.45&&w60.share<=.5};
 }
 export function reviewTradeFlow(markets,records){
  let imported=0,complete=0,up=0,down=0,neutral=0,notEvaluable=0;
