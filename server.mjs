@@ -1,6 +1,7 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {timingSafeEqual} from 'node:crypto';
 import {createRelay,upstreamPath} from './relay.mjs';
 import {BrtiFeed} from './brti-feed.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
@@ -38,6 +39,7 @@ export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(a
   const allowed=new Set(['https://jbush2723.github.io',...(process.env.ALLOWED_ORIGINS||'').split(',').filter(Boolean)]);
   if(origin&&allowed.has(origin)){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Expose-Headers','Retry-After');}
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Cache-Control','no-store');
+  if(req.method==='OPTIONS' && origin && allowed.has(origin)){res.setHeader('Access-Control-Allow-Methods','GET, HEAD, OPTIONS');res.setHeader('Access-Control-Allow-Headers','X-BRTI-Token');res.writeHead(204);res.end();return;}
   if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405);res.end();return;}
   try {
     const u=new URL(req.url,'http://localhost');
@@ -51,7 +53,13 @@ export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(a
     if(u.pathname==='/api/brti'){
       const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
       res.setHeader('Content-Type','application/json');
-      if(!local){res.writeHead(403);res.end(JSON.stringify({status:'local_only',price:null}));return;}
+      if(!local){
+        const expected=process.env.BRTI_VIEW_TOKEN||'';
+        const supplied=req.headers['x-brti-token'];
+        const actual=typeof supplied==='string'?supplied:'';
+        const a=Buffer.from(expected),b=Buffer.from(actual);
+        if(!expected||!actual||a.length!==b.length||!timingSafeEqual(a,b)){res.writeHead(403);res.end(JSON.stringify({status:'private_access_required',price:null}));return;}
+      }
       res.end(req.method==='HEAD'?'':JSON.stringify(brti.snapshot()));return;
     }
     if(u.pathname.startsWith('/api/')){
