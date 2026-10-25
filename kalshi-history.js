@@ -1,3 +1,4 @@
+import {historyRecords,historyPut,historyMigrate,historyUsage} from './history-storage.js';
 // Kalshi's public historical 1-minute YES bid/ask/trade OHLC. NOT the CF Benchmarks BRTI index.
 // Import is incremental to respect request limits and preserves source and resolution.
 const KEY='btcKalshiHistorical1mV1',MAX=800;
@@ -18,10 +19,6 @@ function normalize(m,raw){
   ao:quote(x.yes_ask,'open'),ah:quote(x.yes_ask,'high'),al:quote(x.yes_ask,'low'),ac:quote(x.yes_ask,'close')
  })).filter(c=>Number.isFinite(c.t)&&[c.bo,c.bc,c.ao,c.ac].some(v=>v!==null)).sort((a,b)=>a.t-b.t);
  return {...m,candles};
-}
-function load(){
- try{const data=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(data)?data.filter(x=>x?.ticker&&Array.isArray(x.candles)).slice(-MAX):[];}
- catch{return [];}
 }
 function draw(svg,rows,mode){
  svg.replaceChildren();svg.setAttribute('viewBox','0 0 850 265');
@@ -86,18 +83,24 @@ export function replayKalshiScalps(markets,{bankroll=1000,stake=50,target=20,sto
  return {balance,pnl:balance-bankroll,wins,losses,skipped,trades:rows.length,drawdown,rows};
 }
 export function installKalshiHistory(host,getBase){
- let items=load(),cursor={recent:null,archive:null},mode='recent',working=false,selected=null;
+ let items=[],cursor={recent:null,archive:null},mode='recent',working=false,ready=false,selected=null;
  const panel=document.createElement('section');panel.className='card kalshi-history';panel.id='kalshiHistory';
  panel.innerHTML=`<div class="section-head"><h2>Import historical Kalshi BTC15M markets · real contract charts</h2><span class="pill" id="historicCount">0 imported</span></div>
  <p class="small muted">Official Kalshi market history, recorded at <strong>1-minute</strong> candle resolution: YES trade, YES bid and YES ask. Not 15-second BRTI. Historical BRTI requires separate licensed index access. Import settled markets in manageable batches; chart old rounds individually. No prices or missing intervals are invented.</p>
  <div class="toolbar"><label for="historicSource">History source</label><select id="historicSource"><option value="recent">Recent settled markets</option><option value="archive">Older archived markets</option></select><button id="historicLoad" type="button">Import next 20 rounds</button><button class="secondary" id="historicResetCursor" type="button">Restart browsing source</button></div>
- <p id="historicStatus" role="status">Choose a source and import actual Kalshi candles.</p>
+ <p id="historicStatus" role="status">Opening historical database and checking previous imports…</p><p id="historicStorageStats" class="small muted">Historical storage initializing…</p>
  <div class="scenario-card"><h3>Historical scalp stress test · 1-minute quote data</h3><p class="small muted">Fixed example rule (not our live strategy): choose YES/NO from the first three observed YES bid closes, enter at the next candle's ask, sell on later bid quotes at target, stop or 7 minutes. Minute OHLC cannot prove fill order; stop is assumed first if both levels are touched. Ignores fees and liquidity. This is NOT a verified backtest of the live signal model.</p><div class="toolbar"><label>Bankroll ($)<input id="kalshiTestBankroll" type="number" value="1000" min="10" step="10"></label><label>Stake per trade ($)<input id="kalshiTestStake" type="number" value="50" min="1" step="1"></label><label>Target (%)<input id="kalshiTestTarget" type="number" value="20" min="1" max="100" step="1"></label><label>Stop (%)<input id="kalshiTestStop" type="number" value="15" min="1" max="100" step="1"></label><button type="button" id="kalshiRunTest">Run historical quote test</button></div><p id="kalshiTestResults" role="status">Import genuine historical rounds, then run the quote-based stress test.</p></div>
  <div class="round-history-body"><div class="round-history-list"><div id="historicList"></div></div><div class="round-history-detail"><h3 id="historicTitle">Choose an imported round</h3><div class="toolbar historic-types"><button type="button" data-type="trade">YES trade</button><button type="button" data-type="bid">YES bid</button><button type="button" data-type="ask">YES ask</button></div><svg id="historicChart" role="img" aria-label="Historical Kalshi contract candlesticks"></svg><p id="historicInfo" class="small muted">Official settlement result and 1-minute quote candles appear after import.</p></div></div>`;
  host.insertAdjacentElement('afterend',panel);
  const $=id=>panel.querySelector('#'+id);
  let chartType='trade';
- const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(items.slice(-MAX)));}catch{$('historicStatus').textContent+=' Browser storage full; new records may not persist.';}};
+ $('historicLoad').disabled=true;
+ const storageStatus=async()=>{
+  const estimate=await historyUsage();
+  $('historicStorageStats').textContent=estimate?
+   'Historical candles stored in IndexedDB. Origin storage: '+(estimate.usage/1048576).toFixed(1)+' MB / '+(estimate.quota/1048576).toFixed(1)+' MB quota used.':
+   'Historical candles stored in IndexedDB. Origin usage estimate unavailable.';
+ };
  const render=()=>{
   items.sort((a,b)=>a.closeAt-b.closeAt);
   $('historicCount').textContent=items.length+' imported';
@@ -139,7 +142,7 @@ export function installKalshiHistory(host,getBase){
  $('historicResetCursor').onclick=()=>{cursor[mode]=null;$('historicStatus').textContent='Pagination reset for this source. Already imported candles remain saved.';};
  for(const btn of panel.querySelectorAll('[data-type]'))btn.onclick=()=>{chartType=btn.dataset.type;render();};
  $('historicLoad').onclick=async()=>{
-  if(working)return;working=true;$('historicLoad').disabled=true;let added=0,failed=0;
+  if(working||!ready)return;working=true;$('historicLoad').disabled=true;let added=0,failed=0;
   try{
    let pages=0,found=[];
    while(found.length<20&&pages++<5){
@@ -160,16 +163,36 @@ export function installKalshiHistory(host,getBase){
      const raw=await fetchData(prefix+encodeURIComponent(m.ticker)+'/candlesticks?start_ts='+start+'&end_ts='+end+'&period_interval=1');
      const record=normalize(round(m,mode==='archive'),raw);
      if(!record.candles.length){failed++;continue;}
-     items.push(record);items.sort((a,b)=>a.closeAt-b.closeAt);items=items.slice(-MAX);added++;
+     // Save one market record per transaction, rather than serializing every
+     // imported chart into the browser's small localStorage quota.
+     await historyPut('kalshiRounds',record);
+     items=items.filter(x=>x.ticker!==record.ticker);
+     items.push(record);items.sort((a,b)=>a.closeAt-b.closeAt);added++;
      $('historicStatus').textContent='Imported '+added+'/'+found.length+' rounds; '+failed+' missing candle responses…';
-     if(added%5===0)save();
     }catch{failed++;}
    }
-   save();selected=items.at(-1)?.ticker||selected;render();
+   selected=items.at(-1)?.ticker||selected;render();await storageStatus();
    $('historicStatus').textContent='Imported '+added+' genuine historical contract charts ('+failed+' unavailable). Total saved '+items.length+'. Import again for another batch. The existing BRTI replay is separate.';
   }catch(e){$('historicStatus').textContent='History import stopped: '+e.message+'. Previous records remain saved.';}
   finally{working=false;$('historicLoad').disabled=false;render();}
  };
- render();
+ async function initialize(){
+  try{
+   const migration=await historyMigrate('kalshiRounds',KEY,'array');
+   const saved=await historyRecords('kalshiRounds');
+   items=saved.filter(x=>x?.ticker&&Array.isArray(x.candles)).sort((a,b)=>a.closeAt-b.closeAt);
+   ready=true;
+   $('historicLoad').disabled=false;
+   render();
+   await storageStatus();
+   $('historicStatus').textContent='Ready: '+items.length+' saved historical rounds in browser database.'+
+    (migration.migrated?' Safely migrated '+migration.migrated+' previous rounds.':'')+
+    ' Import more rounds in batches.';
+  }catch(e){
+   $('historicStatus').textContent='Historical database unavailable: '+e.message+'. Existing imported charts were not deleted.';
+   $('historicStorageStats').textContent='Import paused to avoid losing data. Check browser storage settings.';
+  }
+ }
+ render();initialize();
  return {panel,getHistory:()=>items.map(x=>({...x,candles:x.candles.map(c=>({...c}))}))};
 }
