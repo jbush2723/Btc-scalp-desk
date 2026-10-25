@@ -1,7 +1,16 @@
-const labels={setup_required:'Key setup needed',connecting:'Connecting to Kalshi',waiting_for_data:'Connected · waiting for BRTI',access_denied:'Kalshi denied access · check key and account permissions',subscription_denied:'Kalshi did not accept the BRTI subscription',configuration_error:'Check the saved key file and Key ID',connection_error:'Connection interrupted · retrying',reconnecting:'Reconnecting',stale:'BRTI data is stale',local_only:'Live BRTI is available on your local dashboard',backend_required:'Open your local dashboard to connect BRTI',unavailable:'BRTI connection unavailable'};
+const labels={setup_required:'Key setup needed',connecting:'Connecting to Kalshi',waiting_for_data:'Connected · waiting for BRTI',access_denied:'Kalshi denied access · check key and account permissions',subscription_denied:'Kalshi did not accept the BRTI subscription',configuration_error:'Check the saved key file and Key ID',connection_error:'Connection interrupted · retrying',reconnecting:'Reconnecting',stale:'BRTI data is stale',local_only:'Live BRTI is available on your local dashboard',backend_required:'Open your local dashboard to connect BRTI',private_access_required:'Private BRTI access required',unavailable:'BRTI connection unavailable'};
 const usd=n=>n.toLocaleString('en-US',{style:'currency',currency:'USD'});
 export function startBrti(getBase,getTarget=()=>null){
   const el=id=>document.getElementById(id);let tick=null,receivedAt=0,busy=false;
+  let viewToken='';
+  try{viewToken=sessionStorage.getItem('btcBrtiViewToken')||'';}catch{}
+  const section=el('brtiHeading')?.closest('section');
+  const login=document.createElement('form');
+  login.innerHTML='<label for="brtiViewerToken">Private BRTI viewing token (from Render BRTI_VIEW_TOKEN)</label><div class="toolbar"><input type="password" id="brtiViewerToken" autocomplete="off" placeholder="Enter private viewing token"><button type="submit">Connect BRTI</button></div><p class="small muted">Stored only in this browser tab for this session. Do not enter your Kalshi API key or private key here.</p>';
+  section?.append(login);
+  const field=login.querySelector('input');
+  login.onsubmit=e=>{e.preventDefault();viewToken=field.value.trim();try{if(viewToken)sessionStorage.setItem('btcBrtiViewToken',viewToken);else sessionStorage.removeItem('btcBrtiViewToken');}catch{}void poll();};
+
   function render(){
     const age=tick&&Number.isFinite(tick.ageMs)?tick.ageMs+performance.now()-receivedAt:Infinity;
     const fresh=tick?.status==='live'&&Number.isFinite(tick.price)&&tick.price>0&&Number.isFinite(tick.sourceTime)&&age>=0&&age<=5000;
@@ -41,8 +50,8 @@ export function startBrti(getBase,getTarget=()=>null){
     const base=getBase(),started=performance.now();
     try{
       if(new URL(base,location.href).hostname.endsWith('kalshi.com')){tick={status:'backend_required'};return;}
-      const r=await fetch(base.replace(/\/$/,'')+'/brti',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(5000)});
-      const next=await r.json();if(base!==getBase())return;tick=next;receivedAt=started;
+      const r=await fetch(base.replace(/\/$/,'')+'/brti',{cache:'no-store',credentials:'omit',headers:viewToken?{'X-BRTI-Token':viewToken}:{},signal:AbortSignal.timeout(5000)});
+      const next=await r.json();if(base!==getBase())return;tick=next;receivedAt=started;if(next.status==='private_access_required')login.hidden=false;else if(['live','waiting_for_data','connecting'].includes(next.status))login.hidden=true;
     }catch{tick={status:'unavailable'};}finally{busy=false;render();}
   }
   void poll();setInterval(()=>void poll(),1000);setInterval(render,500);
