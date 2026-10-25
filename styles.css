@@ -77,3 +77,14 @@ header p{margin:0}
 #candleDetails{margin:4px 0}
 @media(max-width:900px){#brtiCandleChart{height:245px}}
 @media(max-width:480px){#brtiCandleChart{height:195px;min-height:195px}.candle-controls span{width:100%;margin-left:0}}
+
+
+.round-history-body{display:grid;grid-template-columns:minmax(185px,.35fr) minmax(0,1fr);gap:14px}
+.round-history-list{max-height:320px;overflow:auto}
+#roundHistoryButtons{display:grid;gap:6px}
+.round-select{background:#0e192a;text-align:left;white-space:normal;font-size:11px;border:1px solid #364b67}
+.round-select.selected{background:#295ecc;border-color:#77aeff}
+.round-history-detail{min-width:0}
+#roundHistoryChart{width:100%;height:260px;background:#0e192a;border:1px solid #26354c;border-radius:8px}
+#roundHistoryStats{overflow-wrap:anywhere}
+@media(max-width:760px){.round-history-body{grid-template-columns:1fr}.round-history-list{max-height:175px}#roundHistoryChart{height:215px}}
