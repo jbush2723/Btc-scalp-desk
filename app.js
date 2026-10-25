@@ -287,7 +287,7 @@ function render() {
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   paperPosition.update({plan:latestPlan,reading,ticker:current?.ticker||null,quote:bookFresh?bookQuote(book):null,
-   bookAt,now,closeAt:active?closeTime(current):null,
+   samples:signals.samples,bookAt,now,closeAt:active?closeTime(current):null,
    fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const plan=frozenPlan||latestPlan;
   if(latestPlan.available&&['UP','DOWN'].includes(reading.action)){
