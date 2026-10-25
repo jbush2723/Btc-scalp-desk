@@ -56,7 +56,7 @@ export class MarketRecorder {
   this.lastDiscover=now;
   const response=await this.api('/markets?series_ticker=KXBTC15M&status=open&limit=100');
   const next=selectMarket(response.markets||[],now);
-  if(!next){this.current=null;return null;}
+  if(!next){if(this.current)await this.flush(this.current);this.current=null;return null;}
   let round=this.rounds.get(next.ticker);
   if(!round){
    round={schema:1,market:{ticker:next.ticker,openAt:parsedTime(next.open_time),closeAt:parsedTime(next.close_time),
@@ -65,6 +65,7 @@ export class MarketRecorder {
     failures:0,gaps:0,complete:false,source:'As-recorded server REST orderbook/trade snapshots and authorized CF BRTI'};
    this.rounds.set(next.ticker,round);this.trim();
   }
+  if(this.current&&this.current.market.ticker!==round.market.ticker)await this.flush(this.current);
   this.current=round;
   return round;
  }
@@ -124,9 +125,9 @@ export class MarketRecorder {
   try{
    const now=this.now(),round=await this.discover(now);
    if(!round)return;
-   if(round.market.closeAt<=now){this.current=null;return;}
+   if(round.market.closeAt<=now){await this.flush(round);this.current=null;return;}
    let metadata=null;
-   if(now-this.lastMarket>30000){
+   if(now-this.lastMarket>10000){
     try{metadata=(await this.api('/markets/'+round.market.ticker)).market;this.lastMarket=now;}
     catch{} // existing metadata remains; metadata staleness is visible
    }
