@@ -14,7 +14,7 @@ export function flowAt(trades,at){
  let lo=0,hi=trades.length;
  while(lo<hi){const mid=(lo+hi)>>1;if(trades[mid].at<=at-60000)lo=mid+1;else hi=mid;}
  const window=seconds=>({yes:0,no:0,unknown:0,count:0,share:null});
- const w10=window(10),w30=window(30),w60=window(60);
+ const w10=window(),w30=window(),w60=window();
  for(let i=lo;i<trades.length&&trades[i].at<=at;i++){
   const t=trades[i];
   for(const [seconds,acc] of [[10,w10],[30,w30],[60,w60]]){
@@ -108,9 +108,17 @@ export function installHistoricalFlow(host,getMarkets,getBase){
       if(row&&!seen.has(row.id)&&row.at>=m.openAt&&row.at<=m.closeAt){trades.push(row);seen.add(row.id);}
      }
      pages++;
-     if(!data.cursor){cursor='';done=true;break;}
-     if(visited.has(data.cursor))throw Error('Repeated pagination cursor');
-     visited.add(data.cursor);cursor=data.cursor;
+     if(!data.cursor){cursor='';done=true;}
+     else{
+      if(visited.has(data.cursor))throw Error('Repeated pagination cursor');
+      visited.add(data.cursor);cursor=data.cursor;
+     }
+     // Save every retrieved page. If Kalshi rate-limits the next request,
+     // a retry resumes from this cursor instead of redownloading trades.
+     const checkpoint={ticker:m.ticker,complete:done,cursor,trades:trades.slice().sort((a,b)=>a.at-b.at)};
+     await historyPut('tradeFlows',checkpoint);
+     records[m.ticker]=checkpoint;
+     if(done)break;
      await pause(350);
     }
     const record={ticker:m.ticker,complete:done,cursor,trades:trades.sort((a,b)=>a.at-b.at)};
