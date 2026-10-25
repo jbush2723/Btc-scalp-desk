@@ -72,7 +72,13 @@ let lastConfirmed=null;
 const lastSignal=document.createElement('p');
 lastSignal.id='lastConfirmedSetup';lastSignal.className='small muted';
 lastSignal.textContent='No confirmed setup recorded in this round.';
-planCard.querySelector('#planCall')?.insertAdjacentElement('afterend',lastSignal);
+planCard.querySelector('#planCall')?.insertAdjacentElement('afterend',lastSignal); 
+const expectedMove=document.createElement('div');
+expectedMove.id='expectedMove';
+expectedMove.className='scalp-projection';
+expectedMove.innerHTML='<div class="grid scalp-projection-grid"><div><span class="small muted">BTC now · official BRTI</span><div id="scalpBtcNow" class="big">—</div></div><div><span class="small muted">Estimated BTC in up to 7m</span><div id="scalpBtcProjected" class="big">—</div></div><div><span class="small muted">Contract sell target</span><div id="scalpContractProjected" class="big">—</div></div></div><p id="scalpProjectionNote" class="small muted">Projection shown only with a current confirmed entry and sufficient BRTI history. Contract target is a suggested take-profit level, not a model prediction or guaranteed fill.</p>';
+lastSignal.insertAdjacentElement('afterend',expectedMove);
+
 
 cockpit.insertAdjacentElement('afterend',positionTracker.section);
 const forecastPanel=document.createElement('section');
@@ -293,6 +299,28 @@ function render() {
 
   put('planEntry',plan.available?cents(plan.entry):'—');put('planTarget',plan.available?cents(plan.target):'—');put('planStop',plan.available?cents(plan.stop):'—');
   put('planHalf',plan.available&&plan.halfTarget!==null?cents(plan.halfTarget):'—');
+  const secondsForScalp=active?Math.min(420,Math.max(0,(closeTime(current)-now)/1000)):0;
+  const scalpPrediction=plan.available&&secondsForScalp>0
+    ?settlementProjection({snapshot:candleSnapshot,strike:target,closeAt:now+secondsForScalp*1000,now})
+    :{ready:false,reason:'No current confirmed entry.'};
+  const btcSnapshotPrice=candleSnapshot?.status==='live'?candleSnapshot.price:null;
+  put('scalpBtcNow',plan.available?usdForecast(btcSnapshotPrice):'—');
+  put('scalpBtcProjected',scalpPrediction.ready?usdForecast(scalpPrediction.center):'—');
+  put('scalpContractProjected',plan.available?cents(plan.target):'—');
+  const projectedDirection=scalpPrediction.ready?(scalpPrediction.center>=btcSnapshotPrice?'UP':'DOWN'):null;
+  $('scalpBtcProjected').className='big '+(projectedDirection==='UP'?'up':projectedDirection==='DOWN'?'down':'muted');
+  $('scalpContractProjected').className='big '+(plan.side==='yes'?'up':'down');
+  $('scalpProjectionNote').textContent=!plan.available?
+    'Waiting for a current confirmed entry setup. No BTC price target is asserted.':
+    !scalpPrediction.ready?
+      'BTC price estimate unavailable: '+scalpPrediction.reason+' Contract sell target is a planned level, not a price forecast.':
+      'Experimental '+Math.round(secondsForScalp/60*10)/10+'-minute BRTI projection · modeled 90% range '+
+      usdForecast(scalpPrediction.low)+' to '+usdForecast(scalpPrediction.high)+
+      '. '+(projectedDirection!==(plan.side==='yes'?'UP':'DOWN')?
+        'WARNING: BTC projection opposes the selected contract direction. ':
+        'Estimated BTC direction agrees with the selected contract. ')+
+      'The contract sell target is a suggested take-profit level, NOT a forecast. No guaranteed returns.';
+
   put('planReason',frozenPlan?planStatus(plan,{ticker:current?.ticker,quote:q,fresh:bookFresh&&now-bookAt<6000,seconds,action:reading.action}):plan.reason);
   put('planMath',plan.available?'Per contract · gross reward '+cents(plan.reward)+' / planned price risk '+cents(plan.risk)+' · '+plan.ratio.toFixed(2)+':1 gross'+(plan.netRatio===null?' · costs not included':'. With '+plan.costCents.toFixed(1)+'¢ costs: '+cents(plan.netReward)+' reward / '+cents(plan.netRisk)+' planned risk · '+plan.netRatio.toFixed(2)+':1 estimated net'):'Levels appear only when a confirmed signal has enough price room.');
   put('planMeta',plan.available?plan.ticker+' · '+(frozenPlan?'frozen':'calculated')+' '+new Date(plan.at).toLocaleTimeString()+' · ask size at calculation: '+number(plan.size)+' contracts':'');
