@@ -2,6 +2,7 @@ import {API_BASE} from './config.js';
 import {WINDOWS, finite, price, closeTime, selectMarket, normalizeBook, bookQuote, TradeFlow, fetchTradeWindow} from './flow.js';
 import './manual.js';
 import {SignalEngine} from './signal.js';
+import {suggestPlan,planStatus} from './plan.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -9,6 +10,7 @@ const number = n => n === null || !Number.isFinite(n) ? '—' : n.toLocaleString
 const cents = n => n === null || !Number.isFinite(n) ? '—' : (n*100).toFixed(1)+'¢';
 const flow = new TradeFlow();
 const signals = new SignalEngine();
+let latestPlan=null, frozenPlan=null;
 let current = null, book = null, quote = null, epoch = 0, busy = false, timer;
 let marketAt = 0, bookAt = 0, flowAt = 0, through = 0, complete = false, failures = 0, lastError = '';
 const controllers = new Set();
@@ -127,6 +129,16 @@ function render() {
   put('trendChange',reading.change===null?'Needs 30 seconds of live quotes':(reading.change>=0?'+':'')+reading.change.toFixed(1)+'¢ YES midpoint / ~30s');
   put('marketLean',reading.lean);
   put('signalFlow',reading.shares.length?'YES taker share · 10s '+share(reading.shares[0])+' / 30s '+share(reading.shares[1])+' / 60s '+share(reading.shares[2]):'Waiting for confirmed price history');
+  const rawCosts=$('planCosts').value.trim();
+  latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
+  const plan=frozenPlan||latestPlan;
+  put('planSide',plan.available?(frozenPlan?'FROZEN · ':'')+'BUY '+plan.side.toUpperCase():'NO ENTRY');
+  put('planEntry',plan.available?cents(plan.entry):'—');put('planTarget',plan.available?cents(plan.target):'—');put('planStop',plan.available?cents(plan.stop):'—');
+  put('planReason',frozenPlan?planStatus(plan,{ticker:current?.ticker,quote:q,fresh:bookFresh&&now-bookAt<6000,seconds,action:reading.action}):plan.reason);
+  put('planMath',plan.available?'Per contract · gross reward '+cents(plan.reward)+' / planned price risk '+cents(plan.risk)+' · '+plan.ratio.toFixed(2)+':1 gross'+(plan.netRatio===null?' · costs not included':'. With '+plan.costCents.toFixed(1)+'¢ costs: '+cents(plan.netReward)+' reward / '+cents(plan.netRisk)+' planned risk · '+plan.netRatio.toFixed(2)+':1 estimated net'):'Levels appear only when a confirmed signal has enough price room.');
+  put('planMeta',plan.available?plan.ticker+' · '+(frozenPlan?'frozen':'calculated')+' '+new Date(plan.at).toLocaleTimeString()+' · ask size at calculation: '+number(plan.size)+' contracts':'');
+  $('freezePlan').disabled=!frozenPlan&&!latestPlan.available;
+  put('freezePlan',frozenPlan?'Release frozen plan':'Freeze this plan');
   const badge=document.hidden?'Paused':healthy?'Updating · REST':marketFresh||bookFresh?'Partial feed':lastError?'Feed unavailable':'Connecting';
   put('feedBadge',badge); $('feedBadge').className='pill '+(healthy?'up':'warn');
   const blocked=/fetch|403|401/i.test(lastError);
@@ -143,6 +155,8 @@ function render() {
   rows('tapeRows',tape.length?tape.map(t=>[new Date(t.at).toLocaleTimeString(),t.side.toUpperCase(),number(t.count),cents(t.yes),cents(t.no)]):[[flowFresh?'No trades in retained history':'Waiting for fresh trades','—','—','—','—']]);
 }
 function share(value){return value===null?'—':Math.round(value*100)+'%';}
+$('planCosts').addEventListener('input',render);
+$('freezePlan').onclick=()=>{frozenPlan=frozenPlan?null:latestPlan?.available?{...latestPlan}:null;render();};
 $('refreshLive').onclick=()=>refresh();
 $('feedForm').onsubmit=e=>{
   e.preventDefault();const raw=$('feedUrl').value.trim().replace(/\/+$/,'');

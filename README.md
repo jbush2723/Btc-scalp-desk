@@ -44,7 +44,17 @@ The top panel distinguishes the **scalp signal**, the **30-second contract trend
 - Trend uses YES bid/ask midpoint changes, not last-trade bounce. Less than 1¢ movement is SIDEWAYS. Market leaning uses the midpoint relative to 50¢ and can disagree with trend.
 - Thirty seconds of uninterrupted observed quotes are needed at startup and after rollover. Gaps above eight seconds and invalid/crossed books reset quote history. There is no signal when the feed is unavailable.
 
-### Quotes and flow
+### Entry and exit plans
+
+The entry/exit panel proposes illustrative contract-price levels only when the UP/DOWN signal is confirmed. Entry is the current ask of that outcome, expressed as a buy-limit ceiling. Take profit and stop triggers are evaluated against the **same outcome's bid**, not its ask or the other outcome's price. Levels use the market's published `price_ranges`; NO increments mirror the YES price grid. Missing/invalid tick metadata suppresses a plan.
+
+The planned price-risk distance is `max(2 cents, twice the spread, half the recent midpoint range)`. The stop rounds down to an allowed price; target rounds up to at least two times actual rounded risk above entry. Plans are rejected when risk exceeds 10 cents, the target cannot fit below the tradable ceiling, liquidity/history is missing, or fewer than 60 seconds remain. These are unbacktested design choices, not optimal entries or price forecasts. A stop trigger does not cap losses or guarantee an exit.
+
+An optional round-trip fees/slippage allowance in cents per contract subtracts from reward and adds to planned risk. When supplied, at least 1.5:1 estimated net reward/risk is required. Blank means gross only, **not zero fees**; verify actual fees in Kalshi's order ticket. No account, fee tier, fill or position information is collected.
+
+**Freeze this plan** saves an in-memory reference with fixed prices, ticker, timestamp and cost assumption. It places no orders and does not imply an entry filled. The page checks the original side's current bid for target/stop crossings, flags lost signal confirmation, stale data and market rollover, and does not silently move the levels. Release returns to live suggestions; reload clears the frozen reference. Levels from a previous contract remain explicitly labeled as inapplicable to the new contract.
+
+### Quote and flow mechanics
 
 - Poll every two seconds **after the previous cycle finishes**, pause in hidden tabs, and retry errors with capped exponential backoff. This cadence is not a latency guarantee.
 - Select the active `KXBTC15M` contract using `open_time` and `close_time`, not the later settlement/expiration timestamp. Clear quote, depth and flow state at rollover; ignore late previous-contract responses.
@@ -53,7 +63,7 @@ The top panel distinguishes the **scalp signal**, the **30-second contract trend
 - Sum contract counts using exchange event timestamps in `(now − window, now]` for 10/30/60 seconds. Prefer `taker_outcome_side`, falling back to legacy `taker_side`. Never interpret `taker_book_side` as YES/NO. Unknown sides are separate; block trades are excluded. Net is YES minus NO contracts, not signed BTC volume or dollar notional.
 - Trade history is complete only through the displayed fetch cutoff; the newest seconds may still be pending. Pagination limits show lower-bound side totals and suppress net. Stale data is hidden after 15 seconds (or 20 seconds behind the trade cutoff).
 - Manual calculators and the local trade journal remain available independently of the feed. Existing journal entries are retained; content is rendered as text.
-- Service worker v4 removes older application caches and never caches API responses. An offline shell does not imply live data.
+- Service worker v5 removes older application caches and never caches API responses. An offline shell does not imply live data.
 
 ## Verify
 
@@ -67,6 +77,7 @@ Optional browser regression with Playwright installed and the local server runni
 
 ```sh
 node tests/browser.mjs
+node tests/plan-browser.mjs
 ```
 
 It uses installed Microsoft Edge by default; `BROWSER_CHANNEL` and `PLAYWRIGHT_MODULE` can override the browser channel/module path. Tests cover late responses across rollover, replayed IDs, stale-data hiding and invalid manual input. Unit tests cover window boundaries, fractional quantities, unknown/block/wrong-market trades, book complements, pagination and relay restrictions. Live desktop/mobile checks were also performed against the Node backend; no browser script errors or mobile page overflow were observed. Hosted backend deployment has not been performed.

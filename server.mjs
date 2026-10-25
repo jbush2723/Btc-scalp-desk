@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {createRelay,upstreamPath} from './relay.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
-const assets=new Map([['/','index.html'],...['index.html','app.js','flow.js','signal.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
+const assets=new Map([['/','index.html'],...['index.html','app.js','flow.js','signal.js','plan.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
 export function makeServer(){return createServer(async(req,res)=>{
   const origin=req.headers.origin;
