@@ -1,5 +1,5 @@
-const CACHE='btc-scalp-v16';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./brti-ui.js','./cryptometer-ui.js','./signal-audit.js','./settlement-forecast.js','./market-context.js','./flow.js','./signal.js','./plan.js','./chart.js','./manual.js','./config.js','./manifest.webmanifest'];
+const CACHE='btc-scalp-v17';
+const ASSETS=['./','./index.html','./styles.css','./app.js','./brti-ui.js','./cryptometer-ui.js','./signal-audit.js','./settlement-forecast.js','./brti-candles.js','./market-context.js','./flow.js','./signal.js','./plan.js','./chart.js','./manual.js','./config.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('btc-scalp-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
