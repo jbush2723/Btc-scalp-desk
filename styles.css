@@ -54,3 +54,15 @@ header p{margin:0}
  #tradeCockpit .metric .big{font-size:22px}
  #tradeCockpit .plan-grid .metric{padding:8px}
 }
+
+
+/* Experimental settlement forecast remains visually distinct from 7-minute scalp signals. */
+.forecast-card{border-left:3px solid var(--amber);padding:15px;margin-top:0}
+.forecast-card .section-head{margin-bottom:10px}
+.forecast-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.forecast-grid .metric{padding:10px;min-width:0}
+.forecast-grid h3{margin:0 0 6px;font-size:11px}
+.forecast-grid .big{font-size:clamp(16px,2vw,25px);overflow-wrap:anywhere}
+#forecastMarket{overflow-wrap:anywhere}
+@media(max-width:800px){.forecast-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.forecast-card{padding:12px}.forecast-grid{gap:6px}.forecast-grid .big{font-size:18px}}
