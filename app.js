@@ -196,7 +196,17 @@ function render() {
   const seconds=active ? Math.max(0,Math.ceil((closeTime(current)-now)/1000)) : null;
   put('liveClock',seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0'));
   put('cockpitCountdown','Market '+(current?.ticker||'waiting')+' · closes in '+(seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')));
-  put('cockpitQuotes','YES: bid '+cents(q?.yesBid??null)+' / ask '+cents(q?.yesAsk??null)+'   ·   NO: bid '+cents(q?.noBid??null)+' / ask '+cents(q?.noAsk??null));
+  const quotesEl=$('cockpitQuotes');
+  quotesEl.replaceChildren();
+  for(const [side,content] of [
+    ['yes','YES: bid '+cents(q?.yesBid??null)+' / ask '+cents(q?.yesAsk??null)],
+    ['no','NO: bid '+cents(q?.noBid??null)+' / ask '+cents(q?.noAsk??null)]
+  ]){
+    const span=document.createElement('span');
+    span.className='quote-side quote-side-'+side;
+    span.textContent=content;
+    quotesEl.append(span);
+  }
   const healthy=marketFresh && bookFresh && flowFresh && complete && !lastError;
   const unfiltered=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
   const target=active?finite(current.floor_strike):null;
@@ -253,6 +263,11 @@ function render() {
   const plan=frozenPlan||latestPlan;
   put('planCall',plan.available?(frozenPlan?'REFERENCE · '+plan.side.toUpperCase()+' entry '+cents(plan.entry):'SUGGESTED ENTRY · BUY '+plan.side.toUpperCase()+' at '+cents(plan.entry)+' or lower'):(reading.action==='WAIT'?'WAIT · Setup not ready':'SIT OUT · No entry suggested'));
   put('planSide',plan.available?(frozenPlan?'FROZEN · ':'BUY ')+plan.side.toUpperCase():'NO ENTRY');
+  const planState=plan.available?(plan.side.toUpperCase()==='YES'?'yes':'no'):(reading.action==='WAIT'?'wait':'sitout');
+  $('entryPlanCard').dataset.planState=planState;
+  $('planCall').className='plan-call plan-state-'+planState;
+  $('planSide').className='pill plan-state-'+planState;
+
   put('planEntry',plan.available?cents(plan.entry):'—');put('planTarget',plan.available?cents(plan.target):'—');put('planStop',plan.available?cents(plan.stop):'—');
   put('planHalf',plan.available&&plan.halfTarget!==null?cents(plan.halfTarget):'—');
   put('planReason',frozenPlan?planStatus(plan,{ticker:current?.ticker,quote:q,fresh:bookFresh&&now-bookAt<6000,seconds,action:reading.action}):plan.reason);
