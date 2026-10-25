@@ -1,5 +1,5 @@
-const CACHE='btc-scalp-v32';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./brti-ui.js','./cryptometer-ui.js','./signal-audit.js','./settlement-forecast.js','./brti-candles.js','./round-history.js','./settlement-audit.js','./position-tracker.js','./historical-replay.js','./kalshi-history.js','./historical-flow.js','./history-storage.js','./market-context.js','./flow.js','./signal.js','./plan.js','./chart.js','./manual.js','./config.js','./manifest.webmanifest'];
+const CACHE='btc-scalp-v33';
+const ASSETS=['./','./index.html','./styles.css','./app.js','./brti-ui.js','./cryptometer-ui.js','./signal-audit.js','./settlement-forecast.js','./brti-candles.js','./round-history.js','./settlement-audit.js','./position-tracker.js','./historical-replay.js','./kalshi-history.js','./historical-flow.js','./history-storage.js','./full-replay-ui.js','./market-context.js','./flow.js','./signal.js','./plan.js','./chart.js','./manual.js','./config.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('btc-scalp-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
