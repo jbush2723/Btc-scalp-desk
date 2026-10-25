@@ -6,6 +6,7 @@ import {suggestPlan,planStatus} from './plan.js';
 import {analyzeChart,drawChart} from './chart.js';
 import {startBrti} from './brti-ui.js';
 import {startCryptometer} from './cryptometer-ui.js';
+import {startSignalAudit} from './signal-audit.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -20,6 +21,7 @@ const controllers = new Set();
 const storage = {get(k) {try{return localStorage.getItem(k)||'';}catch{return '';}}, set(k,v){try{localStorage.setItem(k,v);}catch{}}};
 const local = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let base = storage.get('btcScalpApi') || API_BASE || (local ? location.origin+'/api' : 'https://external-api.kalshi.com/trade-api/v2');
+const recordSignalAudit=startSignalAudit();
 startCryptometer(()=>base);
 startBrti(()=>base,()=>current&&closeTime(current)>Date.now()?{price:finite(current.floor_strike),ticker:current.ticker}:null);
 $('feedUrl').value = storage.get('btcScalpApi');
@@ -136,6 +138,7 @@ function render() {
   put('trendChange',reading.change===null?'Needs 30 seconds of live quotes':(reading.change>=0?'+':'')+reading.change.toFixed(1)+'¢ YES midpoint / ~30s');
   put('marketLean',reading.lean);
   put('signalFlow',reading.shares.length?'YES taker share · 10s '+share(reading.shares[0])+' / 30s '+share(reading.shares[1])+' / 60s '+share(reading.shares[2]):'Waiting for confirmed price history');
+  recordSignalAudit({ticker:current?.ticker,action:reading.action,score:reading.confidence,quote:bookFresh?bookQuote(book):null,now,fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   const plan=frozenPlan||latestPlan;
