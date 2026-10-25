@@ -4,7 +4,8 @@ export function installFullReplay(host,getBase){
  const panel=document.createElement('section');panel.id='fullModelReplay';panel.className='card';
  panel.innerHTML=`<div class="section-head"><h2>Live-data recorder & actual-model paper replay</h2><span class="pill warn" id="modelRecorderBadge">CHECKING</span></div>
  <p class="small muted">The server records Kalshi order-book snapshots, trades with first-observed times, and authorized BRTI ticks while it is awake. Replay calls the same SignalEngine, BRTI veto and entry-plan code as the live desk. It does not backfill missing order-book snapshots or claim real fills.</p>
- <p class="small" id="modelRecorderStatus" role="status">Connect your private BRTI viewing token in the live price panel, then check recorder status.</p>
+ <p class="small" id="modelRecorderStatus" role="status">Checking recorder connection and private authentication…</p>
+ <form id="modelRecorderConnect" autocomplete="off"><label for="modelRecorderToken">Private BRTI viewing token (Render BRTI_VIEW_TOKEN)</label><div class="toolbar"><input type="password" id="modelRecorderToken" autocomplete="off" placeholder="Enter viewing token for this tab"><button type="submit">Connect recorder</button></div><p class="small muted">The recorder uses the same viewing token as Live CF BRTI. It is saved only in sessionStorage for this browser tab. Never enter your Kalshi private/API key here.</p></form>
  <p class="small muted" id="modelRecorderStorage">Recording storage not checked yet.</p>
  <div class="toolbar"><button type="button" class="secondary" id="modelRecorderRefresh">Refresh recorder status</button><button type="button" class="secondary" id="modelRecorderExport">Export recorded rounds (JSON)</button></div>
  <div class="scenario-card"><h3>Actual-model replay · $1,000 example</h3>
@@ -23,20 +24,53 @@ export function installFullReplay(host,getBase){
  host.insertAdjacentElement('afterend',panel);
  const $=id=>panel.querySelector('#'+id);
  const token=()=>{try{return sessionStorage.getItem('btcBrtiViewToken')||'';}catch{return '';}};
- const base=()=>getBase().replace(/\/+$/,'');
+ const base=()=>String(getBase()||'').replace(/\/+$/,'');
+ let statusBusy=false;
+ const statusError=(code,message)=>{
+  const error=Error(message);error.statusCode=code;return error;
+ };
+ const badgeForError=e=>e.statusCode||'UNAVAILABLE';
  const money=n=>Number(n).toLocaleString('en-US',{style:'currency',currency:'USD'});
  const date=x=>x?new Date(x).toLocaleString():'—';
  const text=(id,value)=>{$(id).textContent=value;};
  const get=async(path,{binary=false}={})=>{
-  const t=token();if(!t)throw Error('Connect private BRTI viewing token near Live CF BRTI first.');
-  const origin=new URL(base(),location.href);
-  if(!['http:','https:'].includes(origin.protocol)||origin.hostname.endsWith('kalshi.com'))throw Error('Choose your Render backend under Feed connection first.');
-  const response=await fetch(base()+path,{headers:{'X-BRTI-Token':t},credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(20000)});
-  if(!response.ok)throw Error('Recorder returned HTTP '+response.status+(response.status===403?' · private token not accepted':''));
-  return binary?response.blob():response.json();
+  const backend=base();
+  if(!backend)throw statusError('SET BACKEND','Feed connection is empty. Set it to https://btc-scalp-desk-98s3.onrender.com/api, then refresh this page.');
+  let origin;
+  try{origin=new URL(backend,location.href);}
+  catch{throw statusError('SET BACKEND','Feed connection URL is not valid. Use your Render service URL ending in /api.');}
+  if(!['http:','https:'].includes(origin.protocol)||origin.hostname.endsWith('kalshi.com')||!origin.pathname.endsWith('/api'))
+   throw statusError('SET BACKEND','The recorder needs your own Render backend URL ending in /api, not Kalshi directly. Current backend: '+origin.origin+origin.pathname);
+  const t=token();
+  if(!t)throw statusError('TOKEN NEEDED','Enter the private BRTI_VIEW_TOKEN using Connect recorder above. The token is browser-tab-specific and is not the Kalshi API key.');
+  let response;
+  try{
+   response=await fetch(backend+path,{
+    headers:{'X-BRTI-Token':t},credentials:'omit',cache:'no-store',
+    signal:AbortSignal.timeout(75000)
+   });
+  }catch(e){
+   if(e.name==='TimeoutError'||e.name==='AbortError')
+    throw statusError('SERVER TIMEOUT','Render did not respond within 75 seconds. Free instances can take time to wake; check the service status and try Refresh recorder status.');
+   throw statusError('NETWORK ERROR','Could not reach '+origin.origin+'. Verify the Render service is running and the Feed connection URL is correct. Network/CORS detail: '+e.message);
+  }
+  if(response.status===403||response.status===401)
+   throw statusError('TOKEN REJECTED','The backend rejected the viewing token (HTTP '+response.status+'). Copy the exact BRTI_VIEW_TOKEN value from Render Environment and connect again.');
+  if(response.status===400||response.status===404)
+   throw statusError('NOT DEPLOYED','The recorder API endpoint is missing (HTTP '+response.status+'). Render may still be running an older version: deploy the latest main branch and check /health.');
+  if(response.status===429)
+   throw statusError('RATE LIMITED','The backend is rate-limited. Retry after '+(response.headers.get('Retry-After')||'30')+' seconds.');
+  if(!response.ok)throw statusError('BACKEND ERROR','Recorder backend returned HTTP '+response.status+'. Check the Render logs.');
+  try{return binary?response.blob():await response.json();}
+  catch{throw statusError('BAD RESPONSE','The backend responded, but did not return valid recorder data. Check the deployed version.');}
  };
  async function refresh(){
+  if(statusBusy)return;
+  statusBusy=true;
   $('modelRecorderRefresh').disabled=true;
+  text('modelRecorderBadge','CONNECTING');
+  $('modelRecorderBadge').className='pill warn';
+  text('modelRecorderStatus','Contacting recorder backend '+base()+'. A sleeping Render instance may take up to 75 seconds to respond…');
   try{
    const s=await get('/model/status');
    text('modelRecorderBadge',s.status==='recording'?'RECORDING':'CHECK FEED');
@@ -48,9 +82,10 @@ export function installFullReplay(host,getBase){
     (s.pauseUntil>Date.now()?' · Kalshi cooldown '+Math.ceil((s.pauseUntil-Date.now())/1000)+'s':''));
    text('modelRecorderStorage',(s.mode==='ephemeral_local'?'TEMPORARY STORAGE · ':'Configured path · ')+s.storageWarning);
   }catch(e){
-   text('modelRecorderBadge','UNAVAILABLE');$('modelRecorderBadge').className='pill warn';
+   text('modelRecorderBadge',badgeForError(e));$('modelRecorderBadge').className='pill warn';
    text('modelRecorderStatus',e.message);
-  }finally{$('modelRecorderRefresh').disabled=false;}
+   text('modelRecorderStorage','No recorder storage status was retrieved.');
+  }finally{statusBusy=false;$('modelRecorderRefresh').disabled=false;}
  }
  function equity(points){
   const svg=$('modelReplayEquity');svg.replaceChildren();
@@ -116,6 +151,15 @@ export function installFullReplay(host,getBase){
   }catch(e){text('modelRecorderStatus','Export failed: '+e.message);}
   finally{$('modelRecorderExport').disabled=false;}
  }
+ $('modelRecorderConnect').onsubmit=e=>{
+  e.preventDefault();
+  const input=$('modelRecorderToken'),value=input.value.trim();
+  if(!value){text('modelRecorderStatus','Enter your private BRTI_VIEW_TOKEN in the field above.');return;}
+  try{sessionStorage.setItem('btcBrtiViewToken',value);}
+  catch{ text('modelRecorderStatus','This browser tab blocked sessionStorage. Enable site storage to connect securely.');return; }
+  input.value='';
+  void refresh();
+ };
  $('modelRecorderRefresh').onclick=refresh;
  $('modelReplayRun').onclick=run;
  $('modelRecorderExport').onclick=exportData;
