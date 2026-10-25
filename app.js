@@ -9,6 +9,7 @@ import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {startCryptometer} from './cryptometer-ui.js';
 import {startSignalAudit} from './signal-audit.js';
 import {settlementProjection,settlementEdge} from './settlement-forecast.js';
+import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -34,6 +35,31 @@ const cockpit=document.createElement('div');
 cockpit.id='tradeCockpit';
 cockpit.setAttribute('aria-label','Live price chart and trading levels');
 const brtiCard=$('brtiHeading').closest('section'),planCard=$('entryPlanCard');
+const candleControls=document.createElement('div');
+candleControls.id='candleControls';candleControls.className='candle-controls';
+const candleViews=[['live','Live'],['15m','15m'],['30m','30m'],['1h','1h']];
+const candleRanges={live:120000,'15m':900000,'30m':1800000,'1h':3600000};
+let candleView='live';
+try{const saved=sessionStorage.getItem('btcCandleView');if(candleRanges[saved])candleView=saved;}catch{}
+for(const [key,label] of candleViews){
+ const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.view=key;
+ button.onclick=()=>{candleView=key;try{sessionStorage.setItem('btcCandleView',key);}catch{}render();};
+ candleControls.append(button);
+}
+const candleLabel=document.createElement('span');
+candleLabel.className='small muted';candleLabel.textContent='15s OHLC candles';
+candleControls.append(candleLabel);
+const candleChart=document.createElementNS('http://www.w3.org/2000/svg','svg');
+candleChart.id='brtiCandleChart';
+candleChart.setAttribute('role','img');
+candleChart.setAttribute('aria-label','Official BRTI 15-second candlesticks');
+const candleDetails=document.createElement('p');candleDetails.id='candleDetails';candleDetails.className='small muted';
+const oldBrtiChart=$('brtiChart');
+oldBrtiChart.hidden=true;
+oldBrtiChart.insertAdjacentElement('beforebegin',candleControls);
+oldBrtiChart.insertAdjacentElement('afterend',candleChart);
+candleChart.insertAdjacentElement('afterend',candleDetails);
+
 document.querySelector('header').insertAdjacentElement('afterend',cockpit);
 cockpit.append(brtiCard,planCard);
 const forecastPanel=document.createElement('section');
@@ -169,6 +195,21 @@ function render() {
   const unfiltered=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
   const target=active?finite(current.floor_strike):null;
   const brtiContext=evaluateBrtiContext(getBrtiSnapshot(),target);
+  const candleSnapshot=getBrtiSnapshot();
+  const candleRange=candleRanges[candleView];
+  const chartNow=Number.isFinite(candleSnapshot?.sourceTime)?candleSnapshot.sourceTime:now;
+  const candleRows=candlesFromTicks(candleSnapshot?.history,{now:chartNow,windowMs:candleRange});
+  drawBrtiCandles(candleChart,candleRows,{now:chartNow,windowMs:candleRange,strike:target});
+  for(const button of candleControls.querySelectorAll('button')){
+    const selected=button.dataset.view===candleView;
+    button.setAttribute('aria-pressed',String(selected));
+    button.classList.toggle('selected',selected);
+  }
+  const covered=candleRows.length?(candleRows.at(-1).time-candleRows[0].time)/60000:0;
+  candleDetails.textContent=!candleSnapshot?
+    'Waiting for live official BRTI. Connect BRTI to display genuine candles.':
+    candleRows.length+' observed 15-second candles · '+(covered>0?covered.toFixed(1):'0.0')+' minutes of available chart span. Missing candles are never filled; 30m and 1h views build as the backend collects history.';
+
   const reading=applyBrtiVeto(unfiltered,brtiContext);
   const forecast=settlementProjection({snapshot:getBrtiSnapshot(),strike:target,closeAt:active?closeTime(current):NaN,now});
   const odds=settlementEdge(forecast,q);
