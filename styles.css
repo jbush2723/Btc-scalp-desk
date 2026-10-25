@@ -161,3 +161,22 @@ header p{margin:0}
 .scalp-projection-grid .big{font-size:clamp(17px,2vw,24px);overflow-wrap:anywhere}
 .scalp-projection p{margin:5px 0}
 @media(max-width:500px){.scalp-projection-grid{grid-template-columns:1fr 1fr}.scalp-projection-grid>div:last-child{grid-column:span 2}}
+
+
+/* Live hypothetical scalp monitor: styled to match the dark entry/signal cards. */
+.paper-position{border-top:3px solid #6fa2f9;padding:16px 20px}
+.paper-position .section-head{margin-bottom:8px}
+.paper-position .paper-layout{display:grid;grid-template-columns:minmax(200px,.65fr) minmax(0,1.65fr);gap:12px;margin:10px 0}
+.paper-position .paper-decision{background:#0e192a;border:1px solid #32475e;border-radius:10px;padding:16px;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.paper-position .paper-action{font-size:clamp(25px,3vw,39px);font-weight:800;letter-spacing:-1px;line-height:1.17;margin:9px 0;overflow-wrap:anywhere}
+.paper-position .paper-decision .eyebrow{font-size:10px;letter-spacing:.8px;overflow-wrap:anywhere}
+.paper-position .paper-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.paper-position .paper-metrics .metric{padding:12px;min-width:0}
+.paper-position .paper-metrics h3{margin:0 0 7px;font-size:11px}
+.paper-position .paper-metrics .big{font-size:clamp(19px,2.2vw,28px);overflow-wrap:anywhere}
+.paper-position .paper-substats{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.paper-position .paper-substats span{background:#0e192a;border:1px solid #32475e;border-radius:7px;padding:6px 10px;font-size:12px}
+.paper-position #paperDecisionReason{overflow-wrap:anywhere}
+.paper-position #paperTicker{overflow-wrap:anywhere}
+.paper-position .toolbar{margin-top:8px}
+@media(max-width:740px){.paper-position .paper-layout{grid-template-columns:1fr}.paper-position .paper-decision{padding:12px}.paper-position .paper-metrics .metric{padding:10px}}
