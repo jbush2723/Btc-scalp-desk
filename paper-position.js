@@ -8,6 +8,34 @@ const money=n=>Number.isFinite(n)?'$'+n.toFixed(2):'—';
 const cents=n=>Number.isFinite(n)?(100*n).toFixed(1)+'¢':'—';
 const time=n=>Number.isFinite(n)?new Date(n).toLocaleTimeString():'—';
 const left=ms=>{const sec=Math.max(0,Math.ceil(ms/1000));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');};
+// Experimental forward bid scenario, not a calibrated win probability.
+// Uses only observed YES midpoints: 30s momentum damped with a 60s time constant.
+// Unlike the planned target, this can project a loss, flat return or gain.
+export function projectPaperReturn(position,{quote=null,samples=[],now=Date.now(),fresh=false}={}){
+ if(!position||!fresh||!quote||!Array.isArray(samples)||samples.length<8||
+   !['yes','no'].includes(position.side)||!valid(position.entry))return null;
+ const bid=quote[position.side+'Bid'];
+ if(!valid(bid))return null;
+ const cutoff=Math.min(position.enteredAt+HOLD_MS,position.closeAt-CLOSE_BUFFER);
+ const horizonSeconds=Math.min(420,Math.max(0,(cutoff-now)/1000));
+ if(horizonSeconds<=0)return null;
+ const data=samples.filter(p=>Number.isFinite(p.at)&&Number.isFinite(p.mid)&&
+  p.at<=now&&p.at>=now-90000).sort((a,b)=>a.at-b.at);
+ const latest=data.at(-1);
+ if(data.length<8||!latest||now-latest.at>6000)return null;
+ const baseline=data.filter(x=>x.at<=latest.at-30000).at(-1);
+ if(!baseline||latest.at-baseline.at>36000||data.some((p,i)=>i&&p.at-data[i-1].at>8000))return null;
+ const observedSeconds=(latest.at-baseline.at)/1000;
+ const move30=(latest.mid-baseline.mid)*(position.side==='no'?-1:1)*30/observedSeconds;
+ // Constant-velocity extrapolation would produce unrealistic multi-minute moves.
+ // Apply an exponentially decaying 60-second momentum horizon instead.
+ const projectedDelta=move30*2*(1-Math.exp(-horizonSeconds/60));
+ const projectedBid=Math.max(.01,Math.min(.99,bid+projectedDelta));
+ return {projectedBid,projectedPct:pct(projectedBid,position.entry),
+  observedMoveCents:move30*100,horizonSeconds,
+  planTargetPct:valid(position.target)?pct(position.target,position.entry):null,
+  method:'Uncalibrated damped 30s contract-midpoint momentum; not a probability or expected return.'};
+}
 function load(){
  try{
   const v=JSON.parse(sessionStorage.getItem(KEY)||'null');
@@ -123,7 +151,7 @@ export function advancePaperPosition(previous,{plan=null,reading=null,ticker=nul
  return {state,message:'PAPER ENTRY PENDING · confirmed signal; waiting for the NEXT fresh order-book snapshot.'};
 }
 export function startPaperPosition(){
- let state=load(),message='Waiting for a confirmed setup.';
+ let state=load(),message='Waiting for a confirmed setup.',prediction=null;
  const section=document.createElement('section');
  section.className='card paper-position';
  section.id='paperPosition';
@@ -142,6 +170,12 @@ export function startPaperPosition(){
    <div class="metric"><h3>Time until exit deadline</h3><div class="big" id="paperDeadline">—</div></div>
   </div>
  </div>
+ <div class="paper-projection-grid">
+  <div class="metric"><h3>Experimental projected gross return</h3><div class="big" id="paperPredictedReturn">—</div></div>
+  <div class="metric"><h3>Projected selling bid</h3><div class="big" id="paperPredictedBid">—</div></div>
+  <div class="metric"><h3>Plan target gross upside</h3><div class="big" id="paperTargetPct">—</div></div>
+ </div>
+ <p class="small muted" id="paperPredictionNote">Needs at least 30 seconds of uninterrupted live contract quotes. This is an uncalibrated momentum scenario, not a reliable forecast.</p>
  <div class="paper-substats">
   <span id="paperQty">Paper size —</span><span id="paperGrossPnl">Gross P/L —</span>
   <span id="paperStop">Stop —</span><span id="paperTarget">Target —</span>
@@ -177,6 +211,19 @@ export function startPaperPosition(){
   $('paperReturn').textContent=Number.isFinite(gross)?(gross>=0?'+':'')+gross.toFixed(1)+'%':'—';
   $('paperReturn').className='big '+(Number.isFinite(gross)?gross>=0?'up':'down':'');
   $('paperDeadline').textContent=Number.isFinite(remaining)?left(remaining):closed?'COMPLETE':'—';
+  const predicted=active?prediction:null;
+  $('paperPredictedReturn').textContent=predicted?
+   (predicted.projectedPct>=0?'+':'')+predicted.projectedPct.toFixed(1)+'%':'—';
+  $('paperPredictedReturn').className='big '+(predicted?.projectedPct>=0?'up':predicted?'down':'');
+  $('paperPredictedBid').textContent=cents(predicted?.projectedBid);
+  const targetPct=Number.isFinite(curr?.entry)&&Number.isFinite(curr?.target)?
+   pct(curr.target,curr.entry):null;
+  $('paperTargetPct').textContent=Number.isFinite(targetPct)?'+'+targetPct.toFixed(1)+'%':'—';
+  $('paperPredictionNote').textContent=predicted?
+   'Experimental '+Math.round(predicted.horizonSeconds)+'s scenario using the latest uninterrupted ~30s YES midpoint trend, direction-adjusted for '+active.side.toUpperCase()+
+   ', damped over 60s. Not calibrated, not a win probability, and not an executable price guarantee. The plan target is a separate take-profit level.':
+   active?'Projection unavailable: need a fresh book and 30 seconds of uninterrupted price history. No missing data is invented.':
+   'Projected percentages appear only while a hypothetical trade is open with fresh book and 30 seconds of uninterrupted quotes.';
   $('paperQty').textContent='Paper size '+(Number.isFinite(curr?.qty)?curr.qty+' contracts':'—');
   $('paperGrossPnl').textContent='Gross P/L '+money(Number.isFinite(gross)&&Number.isFinite(curr?.qty)?curr.qty*(bid-curr.entry):NaN);
   $('paperStop').textContent='Plan stop '+cents(curr?.stop);
@@ -189,11 +236,14 @@ export function startPaperPosition(){
   const step=advancePaperPosition(state,info);
   const revised=JSON.stringify(step.state);
   if(revised!==JSON.stringify(state)){state=step.state;save(state);}
-  message=step.message;render(info?.now??Date.now());
+  message=step.message;
+  const p=state.active;
+  prediction=p?projectPaperReturn(p,{quote:info?.quote,samples:info?.samples||[],now:info?.now??Date.now(),fresh:info?.fresh}):null;
+  render(info?.now??Date.now());
  }
  $('paperReset').onclick=()=>{
   state={used:[],pending:null,active:null,last:null};message='Tracker reset. Waiting for the next confirmed setup.';
-  save(state);render();
+  prediction=null;save(state);render();
  };
  render();
  return {section,update};
