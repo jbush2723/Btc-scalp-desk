@@ -4,8 +4,10 @@ import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
 import {createRelay,upstreamPath} from './relay.mjs';
 import {BrtiFeed} from './brti-feed.mjs';
+import {MarketRecorder} from './market-recorder.mjs';
+import {replayRecordedModel} from './model-replay.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
-const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','settlement-forecast.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
+const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','full-replay-ui.js','settlement-forecast.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
 
 const cryptoCache={at:0,data:null,pending:null};
@@ -34,7 +36,17 @@ async function cryptometerSnapshot(){
   try{return await cryptoCache.pending;}finally{cryptoCache.pending=null;}
 }
 
-export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(async(req,res)=>{
+function isAuthorized(req){
+ const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+ if(local)return true;
+ const expected=process.env.BRTI_VIEW_TOKEN||'';
+ const supplied=typeof req.headers['x-brti-token']==='string'?req.headers['x-brti-token']:'';
+ const a=Buffer.from(expected),b=Buffer.from(supplied);
+ return Boolean(expected&&supplied&&a.length===b.length&&timingSafeEqual(a,b));
+}
+export function makeServer({brti=new BrtiFeed(),recorder=null}={}){
+ const record=recorder||new MarketRecorder({brti,relay});
+ const server=createServer(async(req,res)=>{
   const origin=req.headers.origin;
   const allowed=new Set(['https://jbush2723.github.io',...(process.env.ALLOWED_ORIGINS||'').split(',').filter(Boolean)]);
   if(origin&&allowed.has(origin)){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Expose-Headers','Retry-After');}
@@ -51,16 +63,32 @@ export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(a
       return;
     }
     if(u.pathname==='/api/brti'){
-      const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
       res.setHeader('Content-Type','application/json');
-      if(!local){
-        const expected=process.env.BRTI_VIEW_TOKEN||'';
-        const supplied=req.headers['x-brti-token'];
-        const actual=typeof supplied==='string'?supplied:'';
-        const a=Buffer.from(expected),b=Buffer.from(actual);
-        if(!expected||!actual||a.length!==b.length||!timingSafeEqual(a,b)){res.writeHead(403);res.end(JSON.stringify({status:'private_access_required',price:null}));return;}
-      }
+      if(!isAuthorized(req)){res.writeHead(403);res.end(JSON.stringify({status:'private_access_required',price:null}));return;}
       res.end(req.method==='HEAD'?'':JSON.stringify(brti.snapshot()));return;
+    }
+    if(u.pathname==='/api/model/status'||u.pathname==='/api/model/replay'||u.pathname==='/api/model/export'){
+      res.setHeader('Content-Type','application/json; charset=utf-8');
+      if(!isAuthorized(req)){res.writeHead(403);res.end(JSON.stringify({error:'Private BRTI viewing token required for model recorder access.'}));return;}
+      if(u.pathname==='/api/model/status'){
+        const status=record.summary();
+        res.end(req.method==='HEAD'?'':JSON.stringify(status));return;
+      }
+      const limit=Math.min(60,Math.max(1,Number(u.searchParams.get('rounds'))||30));
+      if(!Number.isInteger(limit)){res.writeHead(400);res.end('{"error":"Invalid round count"}');return;}
+      const stored=record.getRounds(limit);
+      if(u.pathname==='/api/model/export'){
+        res.setHeader('Content-Disposition','attachment; filename="btc-scap-desk-observations.json"');
+        res.end(req.method==='HEAD'?'':JSON.stringify({schema:1,source:'As-observed recorder; not a historic backfill',exportedAt:new Date().toISOString(),rounds:stored}));return;
+      }
+      const report=replayRecordedModel(stored,{
+        bankroll:Number(u.searchParams.get('bankroll')||1000),
+        stake:Number(u.searchParams.get('stake')||50),
+        feeCents:Number(u.searchParams.get('fee_cents')??1),
+        maxRounds:limit
+      });
+      if(report.error)res.statusCode=400;
+      res.end(req.method==='HEAD'?'':JSON.stringify(report));return;
     }
     if(u.pathname.startsWith('/api/')){
       let path;try{path=upstreamPath(u.href);}catch(e){res.writeHead(400,{'Content-Type':'application/json'});res.end(JSON.stringify({error:e.message}));return;}
@@ -72,7 +100,7 @@ export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(a
     if(file==='config.js')body="export const API_BASE = new URL('./api', location.href).href.replace(/\\/$/, '');\n";
     res.setHeader('Content-Type',(mime[file.split('.').pop()]||'text/plain')+'; charset=utf-8');res.end(req.method==='HEAD'?'':body);
   } catch {res.writeHead(500);res.end('Server error');}
-});server.on('listening',()=>brti.start());server.on('close',()=>brti.stop());return server;}
+});server.on('listening',()=>{brti.start();void record.start();});server.on('close',()=>{void record.stop();brti.stop();});return server;}
 if(process.argv[1]===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT||8787),host=process.env.HOST||'127.0.0.1';
   makeServer().listen(port,host,()=>console.log('BTC Scalp Desk: http://'+host+':'+port));
