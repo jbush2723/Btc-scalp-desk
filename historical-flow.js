@@ -1,7 +1,7 @@
 import {historyRecords,historyPut,historyMigrate,historyUsage} from './history-storage.js';
 // Genuine historical Kalshi trade-flow import. Does not reconstruct order books or BRTI.
 // Only completed, fully paginated rounds are scored. Missing data is NOT a negative signal.
-const KEY='btcHistoricalFlowV1',MAX_TRADES=100000,COOLDOWN_KEY='btcHistoricTradeCooldownV1';
+const KEY='btcHistoricalFlowV1',MAX_TRADES=100000,MAX_PAGES_PER_CLICK=100,COOLDOWN_KEY='btcHistoricTradeCooldownV1';
 const MIN_REQUEST_GAP=3500,MAX_RATE_RETRIES=5;
 let nextAllowedRequestAt=0;
 function normalize(t){
@@ -62,7 +62,7 @@ export function reviewTradeFlow(markets,records){
 }
 export function installHistoricalFlow(host,getMarkets,getBase){
  const panel=document.createElement('section');panel.className='card';panel.id='historicalFlow';
- panel.innerHTML='<div class="section-head"><h2>Historical trade pressure · real 10/30/60s flow</h2><span class="pill" id="historicalFlowCount">0 complete</span></div><p class="small muted">Imports Kalshi trades with the recorded aggressor outcome and contract quantity. The same flow thresholds used by the live model are checked at 10-second decision points. One-minute candles cannot reproduce the live 30-second quote momentum, 3 consecutive snapshots, executable order-book sizes or official BRTI veto, so this is a genuine flow-component audit, NOT a full-model accuracy or P/L backtest.</p><div class="toolbar"><button type="button" id="historicalFlowFetch">Import trades for next 5 saved rounds</button><button type="button" class="secondary" id="historicalFlowReview">Analyze imported trade flow</button></div><p id="historicalFlowStatus" role="status">Import historical contract charts above first, then use this trade-flow importer.</p><p class="small muted" id="flowStorageStats">Initializing historical database…</p><div class="table-scroll"><table><thead><tr><th>Round</th><th>Status</th><th>Recorded trades</th><th>YES-pressure intervals</th><th>NO-pressure intervals</th><th>Evaluated 10s intervals</th></tr></thead><tbody id="historicalFlowRows"></tbody></table></div>';
+ panel.innerHTML='<div class="section-head"><h2>Historical trade pressure · real 10/30/60s flow</h2><span class="pill" id="historicalFlowCount">0 complete</span></div><p class="small muted">Imports Kalshi trades with the recorded aggressor outcome and contract quantity. The same flow thresholds used by the live model are checked at 10-second decision points. One-minute candles cannot reproduce the live 30-second quote momentum, 3 consecutive snapshots, executable order-book sizes or official BRTI veto, so this is a genuine flow-component audit, NOT a full-model accuracy or P/L backtest.</p><div class="toolbar"><button type="button" id="historicalFlowFetch">Finish next saved round</button><button type="button" class="secondary" id="historicalFlowReview">Analyze imported trade flow</button></div><p id="historicalFlowStatus" role="status">Import historical contract charts above first, then use this trade-flow importer.</p><p class="small muted" id="flowStorageStats">Initializing historical database…</p><div class="table-scroll"><table><thead><tr><th>Round</th><th>Status</th><th>Recorded trades</th><th>YES-pressure intervals</th><th>NO-pressure intervals</th><th>Evaluated 10s intervals</th></tr></thead><tbody id="historicalFlowRows"></tbody></table></div>';
  host.insertAdjacentElement('afterend',panel);
  const $=id=>panel.querySelector('#'+id);
  let records={},busy=false,ready=false,cancelRequested=false;
@@ -142,13 +142,15 @@ export function installHistoricalFlow(host,getMarkets,getBase){
   if(busy||!ready)return;busy=true;cancelRequested=false;$('historicalFlowFetch').disabled=true;cancelButton.disabled=false;
   try{
    const markets=getMarkets().filter(m=>m?.ticker&&Number.isFinite(m.openAt)&&Number.isFinite(m.closeAt)&&m.closeAt<Date.now()).sort((a,b)=>b.closeAt-a.closeAt);
-   const todo=markets.filter(m=>!records[m.ticker]?.complete).slice(0,5);
+   // Complete one contract before starting another so the user gets validated
+   // results sooner; the other partially imported contracts stay untouched.
+   const todo=markets.filter(m=>!records[m.ticker]?.complete).slice(0,1);
    if(!todo.length){$('historicalFlowStatus').textContent=markets.length?'No unimported rounds in the saved market set.':'No saved historical market rounds. Use Import next 20 rounds above first.';return;}
    for(const [index,m] of todo.entries()){
     let cursor=records[m.ticker]?.cursor||'',trades=records[m.ticker]?.trades||[],pages=0,done=false;
     if(trades.length>=MAX_TRADES)throw Error('Historical trade safety cap reached for '+m.ticker+' ('+MAX_TRADES+' trades). Partial data remains saved but cannot be scored as a complete round.');
     const visited=new Set(),endpoint=m.archived?'/historical/trades':'/markets/trades';
-    while(pages<12&&trades.length<MAX_TRADES){
+    while(pages<MAX_PAGES_PER_CLICK&&trades.length<MAX_TRADES){
      if(cancelRequested)throw Error('Paused at your request; downloaded pages are saved.');
      const args=new URLSearchParams({ticker:m.ticker,min_ts:String(Math.floor(m.openAt/1000)),max_ts:String(Math.ceil(m.closeAt/1000)),limit:'1000',is_block_trade:'false'});
      if(cursor)args.set('cursor',cursor);
@@ -169,7 +171,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
      const checkpoint={ticker:m.ticker,complete:done,cursor,trades:trades.slice().sort((a,b)=>a.at-b.at)};
      await historyPut('tradeFlows',checkpoint);
      records[m.ticker]=checkpoint;
-     $('historicalFlowStatus').textContent='Saved '+trades.length+' trades for '+m.ticker+' · page '+pages+'/12 this batch · '+(done?'round complete':'more trade pages remain')+'.';
+     $('historicalFlowStatus').textContent='Saved '+trades.length+' trades for '+m.ticker+' · page '+pages+' this import · '+(done?'round complete':'more trade pages remain')+'.';
      if(done)break;
     }
     const record={ticker:m.ticker,complete:done,cursor,trades:trades.sort((a,b)=>a.at-b.at)};
@@ -177,13 +179,13 @@ export function installHistoricalFlow(host,getMarkets,getBase){
     try{await historyPut('tradeFlows',record);}
     catch(e){throw Error('Could not save '+m.ticker+' to browser database: '+e.message+'; existing data was preserved.');}
     records[m.ticker]=record;
-    $('historicalFlowStatus').textContent='Processed '+(index+1)+'/'+todo.length+' rounds · '+trades.length+' trades for '+m.ticker+(done?' (complete).':' (partial · '+pages+' pages this batch; click again to resume).');
+    $('historicalFlowStatus').textContent='Processed '+(index+1)+'/'+todo.length+' rounds · '+trades.length+' trades for '+m.ticker+(done?' (complete).':' (partial · '+pages+' pages this import; click again to resume).');
     update();
     await storageStatus();
     if(cancelRequested)throw Error('Paused at your request; downloaded pages are saved.');
    }
    const stats=update();
-   $('historicalFlowStatus').textContent='Historical trade import finished: '+stats.complete+' complete rounds and '+stats.notEvaluable+' incomplete. '+(stats.notEvaluable?'Click Import again to continue saved trade pages. ':'')+'Select Analyze imported trade flow for completed rounds.';
+   $('historicalFlowStatus').textContent='Historical trade import finished: '+stats.complete+' complete rounds and '+stats.notEvaluable+' incomplete. '+(stats.notEvaluable?'Click Finish next saved round again for the next partial contract. ':'')+'Select Analyze imported trade flow for completed rounds.';
   }catch(e){$('historicalFlowStatus').textContent='Import paused: '+e.message+' Partial data is saved and will resume from the last page on the next import.';}
   finally{busy=false;$('historicalFlowFetch').disabled=!ready;cancelButton.disabled=true;}
  };
@@ -200,7 +202,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
    $('historicalFlowStatus').textContent=
     'Ready: '+saved.length+' saved round trade records in browser database.'+
     (migration.migrated?' Migrated '+migration.migrated+' previous records safely.':'')+
-    ' Import another batch whenever you want.';
+    ' Use Finish next saved round to resume the oldest selected incomplete contract first.';
   }catch(e){
    $('historicalFlowStatus').textContent='Historical storage unavailable: '+e.message+'. Previous imports were not deleted. Check browser storage permissions.';
    $('flowStorageStats').textContent='IndexedDB could not initialize; imports are paused to avoid data loss.';
