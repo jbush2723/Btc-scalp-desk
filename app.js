@@ -16,6 +16,7 @@ import {startPositionTracker} from './position-tracker.js';
 import {installHistoricalReplay} from './historical-replay.js';
 import {installKalshiHistory} from './kalshi-history.js';
 import {installHistoricalFlow} from './historical-flow.js';
+import {installFullReplay} from './full-replay-ui.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -99,7 +100,8 @@ const roundHistory=startRoundHistory();
 forecastPanel.insertAdjacentElement('afterend',roundHistory.panel);
 installHistoricalReplay(roundHistory.panel,()=>roundHistory.getHistory());
 const kalshiHistory=installKalshiHistory(document.querySelector('#historicalReplay'),()=>base);
-installHistoricalFlow(kalshiHistory.panel,()=>kalshiHistory.getHistory(),()=>base);
+const historicalFlowPanel=installHistoricalFlow(kalshiHistory.panel,()=>kalshiHistory.getHistory(),()=>base);
+installFullReplay(historicalFlowPanel,()=>base);
 const settlementAudit=startSettlementAudit();
 roundHistory.panel.insertAdjacentElement('afterend',settlementAudit.section);
 const usdForecast=n=>Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}):'—';
