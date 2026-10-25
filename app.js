@@ -11,6 +11,7 @@ import {startSignalAudit} from './signal-audit.js';
 import {settlementProjection,settlementEdge} from './settlement-forecast.js';
 import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
 import {startRoundHistory} from './round-history.js';
+import {startSettlementAudit} from './settlement-audit.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -78,6 +79,8 @@ forecastPanel.innerHTML=`<div class="section-head"><h2>Higher-risk · 15-minute 
 cockpit.insertAdjacentElement('afterend',forecastPanel);
 const roundHistory=startRoundHistory();
 forecastPanel.insertAdjacentElement('afterend',roundHistory.panel);
+const settlementAudit=startSettlementAudit();
+roundHistory.panel.insertAdjacentElement('afterend',settlementAudit.section);
 const usdForecast=n=>Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}):'—';
 
 const quoteStrip=document.createElement('p');
@@ -217,6 +220,7 @@ function render() {
   const reading=applyBrtiVeto(unfiltered,brtiContext);
   const forecast=settlementProjection({snapshot:getBrtiSnapshot(),strike:target,closeAt:active?closeTime(current):NaN,now});
   const odds=settlementEdge(forecast,q);
+  settlementAudit.observe({market:current,forecast,ticks:historicalTicks,snapshot:candleSnapshot,now});
   put('forecastPrice',forecast.ready?usdForecast(forecast.center):'—');
   put('forecastRange',forecast.ready?usdForecast(forecast.low)+' – '+usdForecast(forecast.high):'—');
   put('forecastOdds',forecast.ready?(100*forecast.pAbove).toFixed(0)+'% / '+(100*forecast.pBelow).toFixed(0)+'%':'—');
