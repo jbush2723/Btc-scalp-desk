@@ -128,45 +128,7 @@ export function installKalshiHistory(host,getBase){
    bankroll:Number($('kalshiTestBankroll').value),stake:Number($('kalshiTestStake').value),
    target:Number($('kalshiTestTarget').value),stop:Number($('kalshiTestStop').value)
   });
-  const cash=x=>'()=>{mode=$('historicSource').value;$('historicStatus').textContent='Switched to '+(mode==='recent'?'recent':'archived')+' Kalshi markets.';};
- $('historicResetCursor').onclick=()=>{cursor[mode]=null;$('historicStatus').textContent='Pagination reset for this source. Already imported candles remain saved.';};
- for(const btn of panel.querySelectorAll('[data-type]'))btn.onclick=()=>{chartType=btn.dataset.type;render();};
- $('historicLoad').onclick=async()=>{
-  if(working)return;working=true;$('historicLoad').disabled=true;let added=0,failed=0;
-  try{
-   let pages=0,found=[];
-   while(found.length<20&&pages++<5){
-    const route=mode==='recent'?'/markets?series_ticker=KXBTC15M&status=settled&limit=100':'/historical/markets?series_ticker=KXBTC15M&limit=100';
-    const url=route+(cursor[mode]?'&cursor='+encodeURIComponent(cursor[mode]):'');
-    const data=await fetchData(url);
-    const markets=Array.isArray(data.markets)?data.markets:[];cursor[mode]=data.cursor||null;
-    found.push(...markets.filter(m=>/^KXBTC15M-[A-Z0-9-]+$/.test(m.ticker)&&Number.isFinite(ts(m))&&String(m.result||'').toLowerCase()!==''));
-    if(!cursor[mode]||!markets.length)break;
-   }
-   found=found.filter(m=>!items.some(x=>x.ticker===m.ticker)).slice(0,20);
-   if(!found.length){$('historicStatus').textContent='No new completed rounds found on this page. Try the other history source or restart browsing.';return;}
-   for(const m of found){
-    try{
-     const start=Math.floor(Date.parse(m.open_time)/1000),end=Math.ceil(Date.parse(m.close_time)/1000);
-     if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end-start>86400)continue;
-     const prefix=mode==='archive'?'/historical/markets/':'/series/KXBTC15M/markets/';
-     const raw=await fetchData(prefix+encodeURIComponent(m.ticker)+'/candlesticks?start_ts='+start+'&end_ts='+end+'&period_interval=1');
-     const record=normalize(round(m,mode==='archive'),raw);
-     if(!record.candles.length){failed++;continue;}
-     items.push(record);items.sort((a,b)=>a.closeAt-b.closeAt);items=items.slice(-MAX);added++;
-     $('historicStatus').textContent='Imported '+added+'/'+found.length+' rounds; '+failed+' missing candle responses…';
-     if(added%5===0)save();
-    }catch{failed++;}
-   }
-   save();selected=items.at(-1)?.ticker||selected;render();
-   $('historicStatus').textContent='Imported '+added+' genuine historical contract charts ('+failed+' unavailable). Total saved '+items.length+'. Import again for another batch. The existing BRTI replay is separate.';
-  }catch(e){$('historicStatus').textContent='History import stopped: '+e.message+'. Previous records remain saved.';}
-  finally{working=false;$('historicLoad').disabled=false;render();}
- };
- render();
- return {panel,getHistory:()=>items.map(x=>({...x,candles:x.candles.map(c=>({...c}))}))};
-}
-+x.toFixed(2);
+  const cash=x=>'$'+x.toFixed(2);
   $('kalshiTestResults').textContent=stats.error||(!stats.trades?
    'No complete qualifying quote paths yet; import more rounds. '+stats.skipped+' skipped.':
    stats.trades+' hypothetical quote paths from '+items.length+' imported rounds · ending bankroll '+cash(stats.balance)+
