@@ -57,6 +57,7 @@ export class MarketRecorder {
   const response=await this.api('/markets?series_ticker=KXBTC15M&status=open&limit=100');
   const next=selectMarket(response.markets||[],now);
   if(!next){if(this.current)await this.flush(this.current);this.current=null;return null;}
+  if(!TICKER.test(next.ticker))throw Error('Invalid market ticker in discovery');
   let round=this.rounds.get(next.ticker);
   if(!round){
    round={schema:1,market:{ticker:next.ticker,openAt:parsedTime(next.open_time),closeAt:parsedTime(next.close_time),
@@ -87,7 +88,7 @@ export class MarketRecorder {
     if(!trade.trade_id||!Number.isFinite(time)||quantity===null||quantity<=0||time>through||time<round.market.openAt||trade.is_block_trade===true)continue;
     fetched.set(trade.trade_id,{trade_id:trade.trade_id,ticker:round.market.ticker,created_time:trade.created_time,
      count_fp:quantity,taker_outcome_side:trade.taker_outcome_side??trade.taker_side??'unknown',
-     yes_price_dollars:trade.yes_price_dollars??null,no_price_dollars:trade.no_price_dollars??null,seenAt:now});
+     yes_price_dollars:trade.yes_price_dollars??null,no_price_dollars:trade.no_price_dollars??null,seenAt:this.now()});
    }
    cursor=response.cursor||'';
    if(!cursor){complete=true;break;}
