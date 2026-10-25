@@ -6,6 +6,33 @@ import {BrtiFeed} from './brti-feed.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
 const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
+
+const cryptoCache={at:0,data:null,pending:null};
+async function cryptometerSnapshot(){
+  if(!process.env.CRYPTOMETER_API_KEY)return {status:'not_configured',events:[]};
+  if(cryptoCache.data && Date.now()-cryptoCache.at<900000)return cryptoCache.data;
+  if(cryptoCache.pending)return cryptoCache.pending;
+  cryptoCache.pending=(async()=>{
+    const url=new URL('https://api.cryptometer.io/rapid-movements/');
+    url.searchParams.set('api_key',process.env.CRYPTOMETER_API_KEY);
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),7500);
+    try {
+      const response=await fetch(url,{signal:controller.signal});
+      if(!response.ok)throw Error('Cryptometer upstream HTTP '+response.status);
+      const json=await response.json();
+      if(String(json.success).toLowerCase()!=='true'||!Array.isArray(json.data))throw Error('Cryptometer response unavailable');
+      const events=json.data.filter(x=>typeof x.pair==='string' && /^BTC[-/]/i.test(x.pair))
+        .map(x=>({pair:x.pair,exchange:String(x.exchange||''),side:String(x.side||''),change:Number(x.change_detected),timestamp:String(x.timestamp||'')}))
+        .filter(x=>Number.isFinite(x.change)&&Number.isFinite(Date.parse(x.timestamp)))
+        .sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp)).slice(0,20);
+      const result={status:'ok',asOf:new Date().toISOString(),events,source:'Cryptometer rapid movements (free; upward-move detector)'};
+      cryptoCache.data=result;cryptoCache.at=Date.now();return result;
+    } finally {clearTimeout(timeout);}
+  })();
+  try{return await cryptoCache.pending;}finally{cryptoCache.pending=null;}
+}
+
 export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(async(req,res)=>{
   const origin=req.headers.origin;
   const allowed=new Set(['https://jbush2723.github.io',...(process.env.ALLOWED_ORIGINS||'').split(',').filter(Boolean)]);
@@ -15,6 +42,12 @@ export function makeServer({brti=new BrtiFeed()}={}){const server=createServer(a
   try {
     const u=new URL(req.url,'http://localhost');
     if(u.pathname==='/health'){res.setHeader('Content-Type','application/json');res.end('{"ok":true}');return;}
+    if(u.pathname==='/api/cryptometer'){
+      res.setHeader('Content-Type','application/json');
+      try{const result=await cryptometerSnapshot();res.end(req.method==='HEAD'?'':JSON.stringify(result));}
+      catch{res.statusCode=503;res.end(req.method==='HEAD'?'':JSON.stringify({status:'unavailable',events:[]}));}
+      return;
+    }
     if(u.pathname==='/api/brti'){
       const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
       res.setHeader('Content-Type','application/json');
