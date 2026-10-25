@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {createRelay,upstreamPath} from './relay.mjs';
 import {BrtiFeed} from './brti-feed.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
-const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
+const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
 
 const cryptoCache={at:0,data:null,pending:null};
