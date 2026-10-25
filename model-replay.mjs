@@ -92,7 +92,10 @@ function replayRound(round,{balance,stake,feeCents}){
   }
   // We count only fully observed candidates. Missing BRTI is not a pass.
   if(!strict||attempted||!['UP','DOWN'].includes(reading.action))continue;
-  // The live default plan is evaluated WITHOUT an assumed fee allowance.\n  // Replay fees are deducted from hypothetical P/L separately; otherwise the\n  // entry rules would differ from what the user sees on the live dashboard.\n  const plan=suggestPlan({reading,quote:q,samples:engine.samples,market,now,costCents:null});
+  // The live default plan is evaluated WITHOUT an assumed fee allowance.
+  // Replay fees are deducted from hypothetical P/L separately; otherwise the
+  // entry rules would differ from what the user sees on the live dashboard.
+  const plan=suggestPlan({reading,quote:q,samples:engine.samples,market,now,costCents:null});
   result.signals.push({at:now,action:reading.action,confidence:reading.confidence,
    planAvailable:plan.available,reason:plan.reason||reading.reason});
   if(plan.available){
