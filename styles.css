@@ -106,3 +106,16 @@ header p{margin:0}
 #cockpitQuotes .quote-side{display:inline-block;padding:4px 7px;border-radius:6px}
 #cockpitQuotes .quote-side-yes{color:var(--green);background:rgba(98,232,183,.08)}
 #cockpitQuotes .quote-side-no{color:var(--red);background:rgba(255,149,156,.08)}
+
+
+.position-tracker{border-top:3px solid #6fa2f9;padding:14px}
+.position-tracker .plan-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.position-tracker .metric{padding:10px}
+.position-tracker .metric h3{font-size:11px;margin:0 0 4px}
+.position-tracker .metric .big{font-size:22px}
+.position-tracker .position-direction{font-weight:700;font-size:17px;margin:8px 0}
+.position-tracker .toolbar label{margin:0;white-space:nowrap}
+.position-tracker #positionEntry{max-width:160px}
+.position-tracker [hidden]{display:none!important}
+#lastConfirmedSetup{border-left:2px solid #4e617d;padding-left:9px;margin:4px 0 10px}
+@media(max-width:720px){.position-tracker .plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.position-tracker .toolbar label{width:100%}}
