@@ -1,4 +1,9 @@
 const labels={setup_required:'Key setup needed',connecting:'Connecting to Kalshi',waiting_for_data:'Connected · waiting for BRTI',access_denied:'Kalshi denied access · check key and account permissions',subscription_denied:'Kalshi did not accept the BRTI subscription',configuration_error:'Check the saved key file and Key ID',connection_error:'Connection interrupted · retrying',reconnecting:'Reconnecting',stale:'BRTI data is stale',local_only:'Live BRTI is available on your local dashboard',backend_required:'Open your local dashboard to connect BRTI',private_access_required:'Private BRTI access required',unavailable:'BRTI connection unavailable'};
+let observedSnapshot=null, observedAt=0;
+export function getBrtiSnapshot(){
+  if(!observedSnapshot||observedSnapshot.status!=='live'||performance.now()-observedAt>5000)return null;
+  return {...observedSnapshot,ageMs:(observedSnapshot.ageMs??0)+performance.now()-observedAt};
+}
 const usd=n=>n.toLocaleString('en-US',{style:'currency',currency:'USD'});
 export function startBrti(getBase,getTarget=()=>null){
   const el=id=>document.getElementById(id);let tick=null,receivedAt=0,busy=false;
@@ -51,7 +56,7 @@ export function startBrti(getBase,getTarget=()=>null){
     try{
       if(new URL(base,location.href).hostname.endsWith('kalshi.com')){tick={status:'backend_required'};return;}
       const r=await fetch(base.replace(/\/$/,'')+'/brti',{cache:'no-store',credentials:'omit',headers:viewToken?{'X-BRTI-Token':viewToken}:{},signal:AbortSignal.timeout(5000)});
-      const next=await r.json();if(base!==getBase())return;tick=next;receivedAt=started;if(next.status==='private_access_required')login.hidden=false;else if(['live','waiting_for_data','connecting'].includes(next.status))login.hidden=true;
+      const next=await r.json();if(base!==getBase())return;tick=next;receivedAt=started;observedSnapshot=next;observedAt=started;if(next.status==='private_access_required')login.hidden=false;else if(['live','waiting_for_data','connecting'].includes(next.status))login.hidden=true;
     }catch{tick={status:'unavailable'};}finally{busy=false;render();}
   }
   void poll();setInterval(()=>void poll(),1000);setInterval(render,500);
