@@ -1,8 +1,7 @@
+import {historyRecords,historyPut,historyMigrate,historyUsage} from './history-storage.js';
 // Genuine historical Kalshi trade-flow import. Does not reconstruct order books or BRTI.
 // Only completed, fully paginated rounds are scored. Missing data is NOT a negative signal.
-const KEY='btcHistoricalFlowV1', LIMIT=100, MAX_TRADES=20000;
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'{}');return v&&typeof v==='object'?v:{};}catch{return {};}}
-function save(rows){try{localStorage.setItem(KEY,JSON.stringify(rows));return true;}catch{return false;}}
+const KEY='btcHistoricalFlowV1',MAX_TRADES=20000;
 function normalize(t){
  const at=Date.parse(t.created_time),qty=Number(t.count_fp??t.count);
  const side=t.taker_outcome_side??t.taker_side;
@@ -45,10 +44,18 @@ export function reviewTradeFlow(markets,records){
 }
 export function installHistoricalFlow(host,getMarkets,getBase){
  const panel=document.createElement('section');panel.className='card';panel.id='historicalFlow';
- panel.innerHTML='<div class="section-head"><h2>Historical trade pressure · real 10/30/60s flow</h2><span class="pill" id="historicalFlowCount">0 complete</span></div><p class="small muted">Imports Kalshi trades with the recorded aggressor outcome and contract quantity. The same flow thresholds used by the live model are checked at 10-second decision points. One-minute candles cannot reproduce the live 30-second quote momentum, 3 consecutive snapshots, executable order-book sizes or official BRTI veto, so this is a genuine flow-component audit, NOT a full-model accuracy or P/L backtest.</p><div class="toolbar"><button type="button" id="historicalFlowFetch">Import trades for next 5 saved rounds</button><button type="button" class="secondary" id="historicalFlowReview">Analyze imported trade flow</button></div><p id="historicalFlowStatus" role="status">Import historical contract charts above first, then use this trade-flow importer.</p><div class="table-scroll"><table><thead><tr><th>Round</th><th>Recorded trades</th><th>YES-pressure intervals</th><th>NO-pressure intervals</th><th>Evaluated 10s intervals</th></tr></thead><tbody id="historicalFlowRows"></tbody></table></div>';
+ panel.innerHTML='<div class="section-head"><h2>Historical trade pressure · real 10/30/60s flow</h2><span class="pill" id="historicalFlowCount">0 complete</span></div><p class="small muted">Imports Kalshi trades with the recorded aggressor outcome and contract quantity. The same flow thresholds used by the live model are checked at 10-second decision points. One-minute candles cannot reproduce the live 30-second quote momentum, 3 consecutive snapshots, executable order-book sizes or official BRTI veto, so this is a genuine flow-component audit, NOT a full-model accuracy or P/L backtest.</p><div class="toolbar"><button type="button" id="historicalFlowFetch">Import trades for next 5 saved rounds</button><button type="button" class="secondary" id="historicalFlowReview">Analyze imported trade flow</button></div><p id="historicalFlowStatus" role="status">Import historical contract charts above first, then use this trade-flow importer.</p><p class="small muted" id="flowStorageStats">Initializing historical database…</p><div class="table-scroll"><table><thead><tr><th>Round</th><th>Recorded trades</th><th>YES-pressure intervals</th><th>NO-pressure intervals</th><th>Evaluated 10s intervals</th></tr></thead><tbody id="historicalFlowRows"></tbody></table></div>';
  host.insertAdjacentElement('afterend',panel);
  const $=id=>panel.querySelector('#'+id);
- let records=load(),busy=false;
+ let records={},busy=false,ready=false;
+ $('historicalFlowFetch').disabled=true;
+ $('historicalFlowReview').disabled=true;
+ const storageStatus=async()=>{
+  const estimate=await historyUsage();
+  $('flowStorageStats').textContent=estimate?
+   'Historical data uses browser database storage (IndexedDB). Origin storage: '+(estimate.usage/1048576).toFixed(1)+' MB of '+(estimate.quota/1048576).toFixed(1)+' MB quota currently used.':
+   'Historical data uses browser database storage (IndexedDB). Usage estimate unavailable.';
+ };
  const update=()=>{
   const result=reviewTradeFlow(getMarkets(),records);
   $('historicalFlowCount').textContent=result.complete+' complete';
@@ -67,7 +74,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
  };
  const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  $('historicalFlowFetch').onclick=async()=>{
-  if(busy)return;busy=true;$('historicalFlowFetch').disabled=true;
+  if(busy||!ready)return;busy=true;$('historicalFlowFetch').disabled=true;
   try{
    const markets=getMarkets().filter(m=>m?.ticker&&Number.isFinite(m.openAt)&&Number.isFinite(m.closeAt)&&m.closeAt<Date.now()).sort((a,b)=>b.closeAt-a.closeAt);
    const todo=markets.filter(m=>!records[m.ticker]?.complete).slice(0,5);
@@ -96,10 +103,14 @@ export function installHistoricalFlow(host,getMarkets,getBase){
      visited.add(data.cursor);cursor=data.cursor;
      await pause(350);
     }
-    records[m.ticker]={ticker:m.ticker,complete:done,cursor,trades:trades.sort((a,b)=>a.at-b.at)};
-    if(!save(records)){$('historicalFlowStatus').textContent='Browser storage is full. Existing imported trade records may not persist.';return;}
+    const record={ticker:m.ticker,complete:done,cursor,trades:trades.sort((a,b)=>a.at-b.at)};
+    // Commit only this ticker, not a giant serialized object for every imported round.
+    try{await historyPut('tradeFlows',record);}
+    catch(e){throw Error('Could not save '+m.ticker+' to browser database: '+e.message+'; existing data was preserved.');}
+    records[m.ticker]=record;
     $('historicalFlowStatus').textContent='Downloaded '+(index+1)+'/'+todo.length+' rounds · '+trades.length+' trades for latest round'+(done?'':' (partial; more pages needed)')+'.';
     update();
+    await storageStatus();
     await pause(600);
    }
    const stats=update();
@@ -107,5 +118,24 @@ export function installHistoricalFlow(host,getMarkets,getBase){
   }catch(e){$('historicalFlowStatus').textContent='Import stopped: '+e.message+'. Partial data remains stored; retry later if rate-limited.';}
   finally{busy=false;$('historicalFlowFetch').disabled=false;}
  };
- update();return panel;
+ async function initialize(){
+  try{
+   const migration=await historyMigrate('tradeFlows',KEY,'object');
+   const saved=await historyRecords('tradeFlows');
+   records=Object.fromEntries(saved.map(x=>[x.ticker,x]));
+   ready=true;
+   $('historicalFlowFetch').disabled=false;
+   $('historicalFlowReview').disabled=false;
+   update();
+   await storageStatus();
+   $('historicalFlowStatus').textContent=
+    'Ready: '+saved.length+' saved round trade records in browser database.'+
+    (migration.migrated?' Migrated '+migration.migrated+' previous records safely.':'')+
+    ' Import another batch whenever you want.';
+  }catch(e){
+   $('historicalFlowStatus').textContent='Historical storage unavailable: '+e.message+'. Previous imports were not deleted. Check browser storage permissions.';
+   $('flowStorageStats').textContent='IndexedDB could not initialize; imports are paused to avoid data loss.';
+  }
+ }
+ initialize();return panel;
 }
