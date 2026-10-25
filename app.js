@@ -151,7 +151,7 @@ function render() {
   put('trendChange',reading.change===null?'Needs 30 seconds of live quotes':(reading.change>=0?'+':'')+reading.change.toFixed(1)+'¢ YES midpoint / ~30s');
   put('marketLean',reading.lean);
   put('signalFlow',reading.shares.length?'YES taker share · 10s '+share(reading.shares[0])+' / 30s '+share(reading.shares[1])+' / 60s '+share(reading.shares[2]):'Waiting for confirmed price history');
-  recordSignalAudit({ticker:current?.ticker,action:reading.action,score:reading.confidence,quote:bookFresh?bookQuote(book):null,now,fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
+  recordSignalAudit({ticker:current?.ticker,action:reading.action,score:reading.confidence,quote:bookFresh?bookQuote(book):null,now,quoteAt:bookAt,closeAt:active?closeTime(current):null,fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   const plan=frozenPlan||latestPlan;
