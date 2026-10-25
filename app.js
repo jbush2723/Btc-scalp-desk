@@ -13,6 +13,7 @@ import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
 import {startRoundHistory} from './round-history.js';
 import {startSettlementAudit} from './settlement-audit.js';
 import {startPositionTracker} from './position-tracker.js';
+import {installHistoricalReplay} from './historical-replay.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -88,6 +89,7 @@ forecastPanel.innerHTML=`<div class="section-head"><h2>Higher-risk · 15-minute 
 cockpit.insertAdjacentElement('afterend',forecastPanel);
 const roundHistory=startRoundHistory();
 forecastPanel.insertAdjacentElement('afterend',roundHistory.panel);
+installHistoricalReplay(roundHistory.panel,()=>roundHistory.getHistory());
 const settlementAudit=startSettlementAudit();
 roundHistory.panel.insertAdjacentElement('afterend',settlementAudit.section);
 const usdForecast=n=>Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}):'—';
