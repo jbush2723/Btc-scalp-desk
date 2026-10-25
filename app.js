@@ -4,6 +4,7 @@ import './manual.js';
 import {SignalEngine} from './signal.js';
 import {suggestPlan,planStatus} from './plan.js';
 import {analyzeChart,drawChart} from './chart.js';
+import {startBrti} from './brti-ui.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -18,6 +19,7 @@ const controllers = new Set();
 const storage = {get(k) {try{return localStorage.getItem(k)||'';}catch{return '';}}, set(k,v){try{localStorage.setItem(k,v);}catch{}}};
 const local = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let base = storage.get('btcScalpApi') || API_BASE || (local ? location.origin+'/api' : 'https://external-api.kalshi.com/trade-api/v2');
+startBrti(()=>base);
 $('feedUrl').value = storage.get('btcScalpApi');
 
 function rows(id, values) {

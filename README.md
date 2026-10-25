@@ -7,24 +7,25 @@ Read-only BTC 15-minute Kalshi companion. Frontend: https://jbush2723.github.io/
 - Replaced the original malformed JavaScript and duplicated HTML/script tail.
 - A browser on the GitHub Pages origin connected to `wss://maxycharts.com/ws` and received its `hello` response. No published third-party API permission was found in the inspected homepage or searches, so **MaxyCharts is not enabled**. Reachability is not authorization. No Origin spoofing or restriction bypass is used.
 - Kalshi's documented public REST API works from the Node backend. Direct browser fetches from the GitHub Pages origin failed in the tested browser. GitHub Pages only serves static files; **public live data needs a hosted backend URL**. The page reports unavailable data explicitly until connected.
-- Kalshi's WebSocket handshake requires authenticated headers even for public channels. This project instead polls documented public REST endpoints without credentials. It is near-real-time polling, not tick-by-tick streaming.
-- No Coinbase or CoinGecko spot price is treated as BRTI. The published Kalshi strike is shown separately from manual BRTI input. There is no official live BRTI stream connected.
+- Kalshi's WebSocket handshake requires authenticated headers even for public channels. Contract data polls documented public REST endpoints without credentials. The optional BRTI connection uses the authenticated CF Benchmarks WebSocket channel.
+- No Coinbase or CoinGecko spot price is treated as BRTI. The published Kalshi strike is separate from the live BRTI panel and manual calculator. BRTI requires local API-key setup.
 
 ## Run the complete dashboard locally
 
 Install Node.js 22 or newer, then in this repository:
 
 ```sh
+npm install
 node server.mjs
 ```
 
-Open http://127.0.0.1:8787/. No dependencies, API keys, or account access are needed. The server binds to loopback by default. Keep it running while using the local dashboard.
+Open http://127.0.0.1:8787/. Install dependencies first. Public contract data needs no API keys; official BRTI needs the optional setup below. The server binds to loopback by default. Keep it running while using the local dashboard.
 
 ## Put the backend online
 
 `render.yaml` defines a Node web service using the free plan. It is prepared configuration, **not an already deployed service**. A hosting account and user deployment are still required. Review the host's terms and capacity when deploying.
 
-1. In Render, create a Blueprint from `jbush2723/Btc-scalp-desk`, or create a Node Web Service with build command `node --version`, start command `node server.mjs`, and environment variable `HOST=0.0.0.0`.
+1. In Render, create a Blueprint from `jbush2723/Btc-scalp-desk`, or create a Node Web Service with build command `npm install --omit=dev`, start command `node server.mjs`, and environment variable `HOST=0.0.0.0`.
 2. Wait for the service to deploy and verify its `/health` URL. The service also serves the full dashboard with its backend automatically connected.
 3. To retain GitHub Pages as the frontend, enter `https://YOUR-SERVICE.onrender.com/api` under **Feed connection**. This setting is saved only in that browser. Alternatively set `API_BASE` in `config.js` to that address and commit it to configure all visitors.
 
@@ -60,11 +61,11 @@ An optional round-trip fees/slippage allowance in cents per contract subtracts f
 
 The visible contract chart plots up to 90 seconds of YES midpoints observed while this page is open, plus fast (10-second exponential time constant) and slow (30-second time constant) lines. UP requires the current midpoint above the fast line and fast above slow by at least 0.1¢; DOWN requires the reverse. This chart confirmation is in addition to the prior momentum, volume, freshness and spread checks. The chart resets across rollover/gaps and does not claim to be BTC spot or BRTI. There is no historical chart backfill.
 
-MaxyCharts is available via a prominent **Open MaxyCharts** link. A real browser embed test on October 25, 2026 returned `X-Frame-Options: DENY` and CSP `frame-ancestors 'none'`; the browser blocked framing. The dashboard does not proxy the page, remove security headers or import its chart data. Kalshi's documented [CF Benchmarks feed](https://docs.kalshi.com/websockets/cfbenchmarks-value) requires authenticated access, which is not configured here.
+MaxyCharts is available via a prominent **Open MaxyCharts** link. A real browser embed test on October 25, 2026 returned `X-Frame-Options: DENY` and CSP `frame-ancestors 'none'`; the browser blocked framing. The dashboard does not proxy the page, remove security headers or import its chart data. Kalshi's documented [CF Benchmarks feed](https://docs.kalshi.com/websockets/cfbenchmarks-value) requires authenticated access; configure it locally as described below.
 
 ### Entry suggestions without position tracking
 
-The entry plan is the first main panel: BUY YES/NO at the suggested limit, consider half-profit at its displayed bid, full target and stop. No actual-entry or position form is required. The half-profit level is the midpoint between suggested entry and full target, rounded up to a published price increment. It is suppressed if it cannot fit below the full target or the supplied cost allowance would erase the partial profit. Blank costs mean gross profit only, not verified net profit.
+The entry plan panel shows: BUY YES/NO at the suggested limit, consider half-profit at its displayed bid, full target and stop. No actual-entry or position form is required. The half-profit level is the midpoint between suggested entry and full target, rounded up to a published price increment. It is suppressed if it cannot fit below the full target or the supplied cost allowance would erase the partial profit. Blank costs mean gross profit only, not verified net profit.
 
 For frozen plans, hold/half-sale/exit guidance is explicitly conditional on having entered near the suggested price. No actual holding, fill, sale or remaining quantity is inferred. Frozen levels are reference scenarios, not an account tracker.
 
@@ -77,7 +78,7 @@ For frozen plans, hold/half-sale/exit guidance is explicitly conditional on havi
 - Sum contract counts using exchange event timestamps in `(now − window, now]` for 10/30/60 seconds. Prefer `taker_outcome_side`, falling back to legacy `taker_side`. Never interpret `taker_book_side` as YES/NO. Unknown sides are separate; block trades are excluded. Net is YES minus NO contracts, not signed BTC volume or dollar notional.
 - Trade history is complete only through the displayed fetch cutoff; the newest seconds may still be pending. Pagination limits show lower-bound side totals and suppress net. Stale data is hidden after 15 seconds (or 20 seconds behind the trade cutoff).
 - Manual calculators and the local trade journal remain available independently of the feed. Existing journal entries are retained; content is rendered as text.
-- Service worker v7 removes older application caches and never caches API responses. An offline shell does not imply live data.
+- Service worker v8 removes older application caches and never caches API responses. An offline shell does not imply live data.
 
 ## Verify
 
@@ -103,3 +104,13 @@ It uses installed Microsoft Edge by default; `BROWSER_CHANNEL` and `PLAYWRIGHT_M
 - [Order book](https://docs.kalshi.com/api-reference/market/get-market-orderbook)
 - [WebSocket authentication](https://docs.kalshi.com/getting_started/quick_start_websockets)
 - [Render Blueprint configuration](https://render.com/docs/blueprint-spec)
+
+## Official CF Benchmarks BRTI (local connection)
+
+After saving a Kalshi private-key file, run `node setup-kalshi.mjs` and enter its path plus the Key ID. Ed25519 and RSA-PSS are supported. Setup stores only the identifier and file path in ignored `.local/kalshi.json`; the private key remains in the original file. Do not commit or upload either file. Alternatively supply `KALSHI_KEY_ID` and `KALSHI_PRIVATE_KEY_PATH` on the server.
+
+The server subscribes only to `cfbenchmarks_value` with index `BRTI` at the documented production WebSocket URL. It does not request balances, positions or order access. Setup is retried automatically. Authentication or subscription failures are displayed without exposing upstream responses or credentials.
+
+`/api/brti` is available only to loopback clients: this integration is for the user’s local dashboard, not public redistribution. Public GitHub Pages contains no key or BRTI data. A remote host alone does not enable this route. Confirm applicable data access and distribution permissions before designing a public feed.
+
+The BRTI panel shows valid fresh ticks, up to 15 minutes of observed history and the supplied trailing 60-second average with its sample count. Partial averages are labeled; no settlement value is inferred. Duplicate/out-of-order, malformed, wrong-index and stale ticks are ignored. Prices hide after five seconds without a fresh source tick. Freshness accounts for local clock offset using the TLS WebSocket handshake Date header, not a price-derived timestamp adjustment. Reconnection clears prior chart history. The entry engine remains based on contract momentum, chart confirmation and executed flow; BRTI is a separate official reference, not an added trading signal.
