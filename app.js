@@ -13,6 +13,7 @@ import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
 import {startRoundHistory} from './round-history.js';
 import {startSettlementAudit} from './settlement-audit.js';
 import {startPositionTracker} from './position-tracker.js';
+import {startPaperPosition} from './paper-position.js';
 import {installHistoricalReplay} from './historical-replay.js';
 import {installKalshiHistory} from './kalshi-history.js';
 import {installHistoricalFlow} from './historical-flow.js';
@@ -70,6 +71,7 @@ candleChart.insertAdjacentElement('afterend',candleDetails);
 document.querySelector('header').insertAdjacentElement('afterend',cockpit);
 cockpit.append(brtiCard,planCard);
 const positionTracker=startPositionTracker();
+const paperPosition=startPaperPosition();
 let lastConfirmed=null;
 const lastSignal=document.createElement('p');
 lastSignal.id='lastConfirmedSetup';lastSignal.className='small muted';
@@ -82,7 +84,8 @@ expectedMove.innerHTML='<div class="grid scalp-projection-grid"><div><span class
 lastSignal.insertAdjacentElement('afterend',expectedMove);
 
 
-cockpit.insertAdjacentElement('afterend',positionTracker.section);
+cockpit.insertAdjacentElement('afterend',paperPosition.section);
+paperPosition.section.insertAdjacentElement('afterend',positionTracker.section);
 const forecastPanel=document.createElement('section');
 forecastPanel.id='settlementForecast';
 forecastPanel.className='card forecast-card';
@@ -95,7 +98,7 @@ forecastPanel.innerHTML=`<div class="section-head"><h2>Higher-risk · 15-minute 
 </div>
 <p class="small" id="forecastMarket">Waiting for official price history.</p>
 <p class="small muted" id="forecastExplanation">Experimental 90-second historical-volatility model; uncalibrated normal-return assumptions. Percentages are modeled estimates, not verified probabilities or a reliable trading edge. The settlement outcome uses the exchange's specified index and rules. Unlike scalp exits, holding to close can lose the entire stake; fees and execution matter.</p>`;
-cockpit.insertAdjacentElement('afterend',forecastPanel);
+positionTracker.section.insertAdjacentElement('afterend',forecastPanel);
 const roundHistory=startRoundHistory();
 forecastPanel.insertAdjacentElement('afterend',roundHistory.panel);
 installHistoricalReplay(roundHistory.panel,()=>roundHistory.getHistory());
@@ -283,6 +286,9 @@ function render() {
   recordSignalAudit({ticker:current?.ticker,action:reading.action,score:reading.confidence,quote:bookFresh?bookQuote(book):null,now,quoteAt:bookAt,closeAt:active?closeTime(current):null,fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
+  paperPosition.update({plan:latestPlan,reading,ticker:current?.ticker||null,quote:bookFresh?bookQuote(book):null,
+   bookAt,now,closeAt:active?closeTime(current):null,
+   fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const plan=frozenPlan||latestPlan;
   if(latestPlan.available&&['UP','DOWN'].includes(reading.action)){
     lastConfirmed={ticker:current?.ticker,at:now,side:latestPlan.side,entry:latestPlan.entry};
