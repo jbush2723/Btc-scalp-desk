@@ -40,11 +40,13 @@ export function suggestPlan({reading,quote,samples,market,now,costCents=null}) {
   const target=ceil(entry+2*risk);
   if(!target)return none('Too close to the payout ceiling for a 2:1 gross reward-to-risk target.');
   const reward=target-entry,cost=costCents===null?null:costCents*100;
+  const half=ceil(entry+(target-entry)/2);
+  const halfTarget=half&&half<target&&(cost===null||half-entry>cost)?half/10000:null;
   const netReward=cost===null?null:reward-cost,netRisk=cost===null?null:risk+cost;
   if(cost!==null&&(netReward<=0||netReward/netRisk<1.5))return none('The cost allowance leaves less than 1.5:1 estimated net reward-to-risk.');
   return {available:true,side,ticker:market.ticker,at:now,entry:entry/10000,stop:stop/10000,target:target/10000,
     risk:risk/10000,reward:reward/10000,ratio:reward/risk,netReward:netReward===null?null:netReward/10000,
-    netRisk:netRisk===null?null:netRisk/10000,netRatio:netReward===null?null:netReward/netRisk,costCents,size,range,
+    netRisk:netRisk===null?null:netRisk/10000,netRatio:netReward===null?null:netReward/netRisk,costCents,size,range,halfTarget,
     reason:'Buy '+side.toUpperCase()+' only at or below the entry limit. Take profit and stop references use the bid for that same side.'};
 }
 export function planStatus(plan,{ticker,quote,fresh,seconds,action}) {
@@ -57,5 +59,6 @@ export function planStatus(plan,{ticker,quote,fresh,seconds,action}) {
   if(bid>=plan.target-1e-9)return 'Take-profit bid reached — review your exit and available size.';
   if(seconds<=60)return 'Final minute — review your exit before settlement; no new entry suggested.';
   if(action!==(plan.side==='yes'?'UP':'DOWN'))return 'Entry setup no longer confirmed — review the frozen plan; do not treat it as a new entry.';
-  return 'Frozen reference · current '+plan.side.toUpperCase()+' bid '+(bid*100).toFixed(1)+'¢. No orders have been placed.';
+  if(plan.halfTarget!==null&&bid>=plan.halfTarget-1e-9)return 'If you entered near '+(plan.entry*100).toFixed(1)+'¢: consider selling half '+(plan.costCents===null?'in gross profit (net fees unknown)':'after your estimated cost allowance')+' and monitor the rest with the same stop. No fill or sale is assumed.';
+  return 'If you entered near '+(plan.entry*100).toFixed(1)+'¢: HOLD setup while the signal stays aligned and the bid stays above '+(plan.stop*100).toFixed(1)+'¢. No position is tracked or order placed.';
 }

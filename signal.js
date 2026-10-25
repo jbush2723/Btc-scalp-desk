@@ -1,4 +1,5 @@
 // Transparent, unbacktested rules. This measures contract momentum, not BRTI.
+import {analyzeChart} from './chart.js';
 export class SignalEngine {
   constructor() { this.reset(); }
   reset() { this.samples=[]; this.candidate=null; }
@@ -31,6 +32,8 @@ export class SignalEngine {
     const down=result.trend==='DOWN'&&s10!==null&&s10<=.4&&s30!==null&&s30<=.45&&s60!==null&&s60<=.5;
     const direction=up?'UP':down?'DOWN':null;
     if(!direction)return wait(result.trend==='SIDEWAYS'?'Price is moving sideways; no directional setup.':'Price momentum and taker flow do not agree strongly enough.');
+    const chart=analyzeChart(this.samples,now);
+    if(!chart.ready||chart.direction!==direction)return wait('The fast/slow chart trend has not confirmed the '+direction+' setup.');
     if(this.candidate?.direction!==direction)this.candidate={direction,since:latest.at,last:latest.at,observations:1};
     else if(latest.at>this.candidate.last){this.candidate.last=latest.at;this.candidate.observations++;}
     if(latest.at-this.candidate.since<4000||this.candidate.observations<3)return {...result,reason:direction+' setup forming. Waiting for confirmation across 3 fresh snapshots.'};

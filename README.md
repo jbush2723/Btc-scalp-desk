@@ -56,6 +56,20 @@ An optional round-trip fees/slippage allowance in cents per contract subtracts f
 
 ### Quote and flow mechanics
 
+### Chart confirmation and MaxyCharts
+
+The visible contract chart plots up to 90 seconds of YES midpoints observed while this page is open, plus fast (10-second exponential time constant) and slow (30-second time constant) lines. UP requires the current midpoint above the fast line and fast above slow by at least 0.1¢; DOWN requires the reverse. This chart confirmation is in addition to the prior momentum, volume, freshness and spread checks. The chart resets across rollover/gaps and does not claim to be BTC spot or BRTI. There is no historical chart backfill.
+
+MaxyCharts is available via a prominent **Open MaxyCharts** link. A real browser embed test on October 25, 2026 returned `X-Frame-Options: DENY` and CSP `frame-ancestors 'none'`; the browser blocked framing. The dashboard does not proxy the page, remove security headers or import its chart data. Kalshi's documented [CF Benchmarks feed](https://docs.kalshi.com/websockets/cfbenchmarks-value) requires authenticated access, which is not configured here.
+
+### Entry suggestions without position tracking
+
+The entry plan is the first main panel: BUY YES/NO at the suggested limit, consider half-profit at its displayed bid, full target and stop. No actual-entry or position form is required. The half-profit level is the midpoint between suggested entry and full target, rounded up to a published price increment. It is suppressed if it cannot fit below the full target or the supplied cost allowance would erase the partial profit. Blank costs mean gross profit only, not verified net profit.
+
+For frozen plans, hold/half-sale/exit guidance is explicitly conditional on having entered near the suggested price. No actual holding, fill, sale or remaining quantity is inferred. Frozen levels are reference scenarios, not an account tracker.
+
+### Quotes and flow
+
 - Poll every two seconds **after the previous cycle finishes**, pause in hidden tabs, and retry errors with capped exponential backoff. This cadence is not a latency guarantee.
 - Select the active `KXBTC15M` contract using `open_time` and `close_time`, not the later settlement/expiration timestamp. Clear quote, depth and flow state at rollover; ignore late previous-contract responses.
 - Parse fixed-point dollar prices and fractional contract sizes. Prefer the order book for coherent bid/ask snapshots. A YES ask is the complement of the best NO bid, with that bid's size. Empty sides show no price.
@@ -63,7 +77,7 @@ An optional round-trip fees/slippage allowance in cents per contract subtracts f
 - Sum contract counts using exchange event timestamps in `(now − window, now]` for 10/30/60 seconds. Prefer `taker_outcome_side`, falling back to legacy `taker_side`. Never interpret `taker_book_side` as YES/NO. Unknown sides are separate; block trades are excluded. Net is YES minus NO contracts, not signed BTC volume or dollar notional.
 - Trade history is complete only through the displayed fetch cutoff; the newest seconds may still be pending. Pagination limits show lower-bound side totals and suppress net. Stale data is hidden after 15 seconds (or 20 seconds behind the trade cutoff).
 - Manual calculators and the local trade journal remain available independently of the feed. Existing journal entries are retained; content is rendered as text.
-- Service worker v5 removes older application caches and never caches API responses. An offline shell does not imply live data.
+- Service worker v7 removes older application caches and never caches API responses. An offline shell does not imply live data.
 
 ## Verify
 

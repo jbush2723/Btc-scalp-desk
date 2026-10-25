@@ -3,6 +3,7 @@ import {WINDOWS, finite, price, closeTime, selectMarket, normalizeBook, bookQuot
 import './manual.js';
 import {SignalEngine} from './signal.js';
 import {suggestPlan,planStatus} from './plan.js';
+import {analyzeChart,drawChart} from './chart.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -132,13 +133,19 @@ function render() {
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   const plan=frozenPlan||latestPlan;
-  put('planSide',plan.available?(frozenPlan?'FROZEN · ':'')+'BUY '+plan.side.toUpperCase():'NO ENTRY');
+  put('planCall',plan.available?(frozenPlan?'REFERENCE · '+plan.side.toUpperCase()+' entry '+cents(plan.entry):'SUGGESTED ENTRY · BUY '+plan.side.toUpperCase()+' at '+cents(plan.entry)+' or lower'):'WAIT · No entry suggested');
+  put('planSide',plan.available?(frozenPlan?'FROZEN · ':'BUY ')+plan.side.toUpperCase():'NO ENTRY');
   put('planEntry',plan.available?cents(plan.entry):'—');put('planTarget',plan.available?cents(plan.target):'—');put('planStop',plan.available?cents(plan.stop):'—');
+  put('planHalf',plan.available&&plan.halfTarget!==null?cents(plan.halfTarget):'—');
   put('planReason',frozenPlan?planStatus(plan,{ticker:current?.ticker,quote:q,fresh:bookFresh&&now-bookAt<6000,seconds,action:reading.action}):plan.reason);
   put('planMath',plan.available?'Per contract · gross reward '+cents(plan.reward)+' / planned price risk '+cents(plan.risk)+' · '+plan.ratio.toFixed(2)+':1 gross'+(plan.netRatio===null?' · costs not included':'. With '+plan.costCents.toFixed(1)+'¢ costs: '+cents(plan.netReward)+' reward / '+cents(plan.netRisk)+' planned risk · '+plan.netRatio.toFixed(2)+':1 estimated net'):'Levels appear only when a confirmed signal has enough price room.');
   put('planMeta',plan.available?plan.ticker+' · '+(frozenPlan?'frozen':'calculated')+' '+new Date(plan.at).toLocaleTimeString()+' · ask size at calculation: '+number(plan.size)+' contracts':'');
   $('freezePlan').disabled=!frozenPlan&&!latestPlan.available;
   put('freezePlan',frozenPlan?'Release frozen plan':'Freeze this plan');
+  const chart=analyzeChart(signals.samples,now);
+  drawChart($('contractChart'),chart);
+  put('chartReading',chart.direction);put('chartFast',cents(chart.fast));put('chartSlow',cents(chart.slow));
+  put('chartRange',chart.low===null?'—':cents(chart.low)+' – '+cents(chart.high));
   const badge=document.hidden?'Paused':healthy?'Updating · REST':marketFresh||bookFresh?'Partial feed':lastError?'Feed unavailable':'Connecting';
   put('feedBadge',badge); $('feedBadge').className='pill '+(healthy?'up':'warn');
   const blocked=/fetch|403|401/i.test(lastError);

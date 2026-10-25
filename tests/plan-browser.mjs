@@ -1,5 +1,7 @@
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+mkdirSync('test-results',{recursive:true});
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
@@ -29,13 +31,17 @@ try {
   await page.waitForFunction(()=>!document.getElementById('refreshLive').disabled);
  }
  assert.equal(await page.locator('#planSide').innerText(),'BUY YES');
+ assert.equal(await page.locator('#chartReading').innerText(),'UP');assert.equal(await page.locator('#contractChart polyline').count(),3);
+ assert.equal(await page.locator('#positionForm').count(),0);assert.equal(await page.locator('a.chart-link').getAttribute('href'),'https://maxycharts.com/');
+ assert.ok(parseFloat(await page.locator('#planHalf').innerText())>parseFloat(await page.locator('#planEntry').innerText()));
  const entry=await page.locator('#planEntry').innerText(),target=parseFloat(await page.locator('#planTarget').innerText())/100,stop=parseFloat(await page.locator('#planStop').innerText())/100;
  await page.locator('#freezePlan').click();assert.match(await page.locator('#planSide').innerText(),/FROZEN/);
  stage=20;forcedBid=target+.01;await page.clock.setFixedTime(start+40000);await page.locator('#refreshLive').click();await page.waitForFunction(()=>!document.getElementById('refreshLive').disabled);
  assert.equal(await page.locator('#planEntry').innerText(),entry);assert.match(await page.locator('#planReason').innerText(),/Take-profit bid reached/);
  forcedBid=stop-.01;stage=21;await page.clock.setFixedTime(start+42000);await page.locator('#refreshLive').click();await page.waitForFunction(()=>!document.getElementById('refreshLive').disabled);assert.match(await page.locator('#planReason').innerText(),/Stop bid/);
- await page.locator('#planHeading').scrollIntoViewIfNeeded();await page.screenshot({path:'../plan-desktop.png'});
- await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('section:has(#planHeading)').screenshot({path:'../plan-mobile.png'});
+ await page.locator('#planHeading').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/plan-desktop.png'});
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.locator('section:has(#planHeading)').screenshot({path:'test-results/plan-mobile.png'});
+ await page.locator('section:has(#chartHeading)').screenshot({path:'test-results/chart-mobile.png'});
  await page.clock.setFixedTime(start+70000);await page.clock.runFor(500);assert.match(await page.locator('#planReason').innerText(),/stale/);
  roll=true;await page.clock.setFixedTime(start+610000);await page.clock.runFor(500);await page.waitForFunction(()=>document.getElementById('planReason').textContent.includes('Previous contract'));
  await page.locator('#freezePlan').click();assert.equal(await page.locator('#planSide').innerText(),'NO ENTRY');assert.equal(await page.locator('#planEntry').innerText(),'—');

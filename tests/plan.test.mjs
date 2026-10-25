@@ -43,3 +43,10 @@ test('frozen plan is unchanged through signal reversal, stale data and rollover'
   assert.match(planStatus(p,{ticker:'KXBTC15M-B',quote:base.quote,fresh:true}),/Previous contract/);
   assert.equal(JSON.stringify(p),original);
 });
+test('half-sale guidance is conditional on a hypothetical entry, green price and aligned signal',()=>{
+  const p=suggestPlan(base);assert.equal(p.halfTarget,.53);
+  const c={ticker:p.ticker,quote:{yesBid:.53,yesAsk:.54},fresh:true,seconds:300,action:'UP'};
+  assert.match(planStatus(p,c),/consider selling half/);assert.match(planStatus(p,c),/net fees unknown/);
+  assert.match(planStatus(p,{...c,action:'DOWN'}),/no longer confirmed/);
+  assert.match(planStatus(p,{...c,quote:{yesBid:.52,yesAsk:.53}}),/HOLD setup/);
+});
