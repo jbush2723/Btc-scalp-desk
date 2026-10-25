@@ -4,7 +4,8 @@ import './manual.js';
 import {SignalEngine} from './signal.js';
 import {suggestPlan,planStatus} from './plan.js';
 import {analyzeChart,drawChart} from './chart.js';
-import {startBrti} from './brti-ui.js';
+import {startBrti,getBrtiSnapshot} from './brti-ui.js';
+import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {startCryptometer} from './cryptometer-ui.js';
 import {startSignalAudit} from './signal-audit.js';
 
@@ -21,6 +22,10 @@ const controllers = new Set();
 const storage = {get(k) {try{return localStorage.getItem(k)||'';}catch{return '';}}, set(k,v){try{localStorage.setItem(k,v);}catch{}}};
 const local = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let base = storage.get('btcScalpApi') || API_BASE || (local ? location.origin+'/api' : 'https://external-api.kalshi.com/trade-api/v2');
+const contextPanel=document.createElement('section');
+contextPanel.className='card';
+contextPanel.innerHTML='<h2>Official BRTI · signal cross-check</h2><p id="brtiContext" role="status">Waiting for verified BRTI data.</p><p class="small muted">Thirty-second BRTI move = 100 × (latest / earlier − 1). Distance = live BRTI − published Kalshi strike. If fresh BRTI moves at least 0.025% opposite a confirmed Kalshi scalp direction, the entry is blocked as conflicting. This threshold is experimental, not a tested trading edge. Missing BRTI does not create a directional signal. Four-hour free Cryptometer PUMP alerts remain context only, not evidence of net buying or selling.</p>';
+document.querySelector('#signalCard').insertAdjacentElement('beforebegin',contextPanel);
 const recordSignalAudit=startSignalAudit();
 startCryptometer(()=>base);
 startBrti(()=>base,()=>current&&closeTime(current)>Date.now()?{price:finite(current.floor_strike),ticker:current.ticker}:null);
@@ -128,7 +133,15 @@ function render() {
   const seconds=active ? Math.max(0,Math.ceil((closeTime(current)-now)/1000)) : null;
   put('liveClock',seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0'));
   const healthy=marketFresh && bookFresh && flowFresh && complete && !lastError;
-  const reading=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
+  const unfiltered=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
+  const target=active?finite(current.floor_strike):null;
+  const brtiContext=evaluateBrtiContext(getBrtiSnapshot(),target);
+  const reading=applyBrtiVeto(unfiltered,brtiContext);
+  const fmtPct=n=>n===null?'not enough history':(n>=0?'+':'')+n.toFixed(4)+'%';
+  put('brtiContext',brtiContext.status==='live'?
+    'Official BRTI '+brtiContext.direction+' · 30s '+fmtPct(brtiContext.changePercent)+' · target gap '+(brtiContext.distance===null?'unavailable':(brtiContext.distance>=0?'+':'')+brtiContext.distance.toFixed(2)+' USD')+
+    (unfiltered.action!==reading.action?' · CONFLICT: ENTRY BLOCKED':' · no contrary-momentum veto'):
+    'BRTI not fresh or unavailable; Kalshi-only rules remain active. No BRTI confirmation claimed.');
   put('scalpAction',reading.action); $('scalpAction').className='signal-action '+(reading.action==='UP'?'up':reading.action==='DOWN'?'down':'warn');
   put('signalConfidence',reading.confidence===null?'—':reading.confidence+' / 100');
   put('confidenceMeaning',reading.confidence===null?'Not enough fresh, usable evidence':reading.confidence>=80?'Strong rule agreement':reading.confidence>=60?'Moderate rule agreement':'Weak or conflicting evidence');
