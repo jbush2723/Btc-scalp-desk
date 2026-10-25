@@ -1,7 +1,7 @@
 import {historyRecords,historyPut,historyMigrate,historyUsage} from './history-storage.js';
 // Genuine historical Kalshi trade-flow import. Does not reconstruct order books or BRTI.
 // Only completed, fully paginated rounds are scored. Missing data is NOT a negative signal.
-const KEY='btcHistoricalFlowV1',MAX_TRADES=20000,COOLDOWN_KEY='btcHistoricTradeCooldownV1';
+const KEY='btcHistoricalFlowV1',MAX_TRADES=100000,COOLDOWN_KEY='btcHistoricTradeCooldownV1';
 const MIN_REQUEST_GAP=3500,MAX_RATE_RETRIES=5;
 let nextAllowedRequestAt=0;
 function normalize(t){
@@ -146,6 +146,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
    if(!todo.length){$('historicalFlowStatus').textContent=markets.length?'No unimported rounds in the saved market set.':'No saved historical market rounds. Use Import next 20 rounds above first.';return;}
    for(const [index,m] of todo.entries()){
     let cursor=records[m.ticker]?.cursor||'',trades=records[m.ticker]?.trades||[],pages=0,done=false;
+    if(trades.length>=MAX_TRADES)throw Error('Historical trade safety cap reached for '+m.ticker+' ('+MAX_TRADES+' trades). Partial data remains saved but cannot be scored as a complete round.');
     const visited=new Set(),endpoint=m.archived?'/historical/trades':'/markets/trades';
     while(pages<12&&trades.length<MAX_TRADES){
      if(cancelRequested)throw Error('Paused at your request; downloaded pages are saved.');
@@ -168,6 +169,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
      const checkpoint={ticker:m.ticker,complete:done,cursor,trades:trades.slice().sort((a,b)=>a.at-b.at)};
      await historyPut('tradeFlows',checkpoint);
      records[m.ticker]=checkpoint;
+     $('historicalFlowStatus').textContent='Saved '+trades.length+' trades for '+m.ticker+' · page '+pages+'/12 this batch · '+(done?'round complete':'more trade pages remain')+'.';
      if(done)break;
     }
     const record={ticker:m.ticker,complete:done,cursor,trades:trades.sort((a,b)=>a.at-b.at)};
@@ -181,7 +183,7 @@ export function installHistoricalFlow(host,getMarkets,getBase){
     if(cancelRequested)throw Error('Paused at your request; downloaded pages are saved.');
    }
    const stats=update();
-   $('historicalFlowStatus').textContent='Historical trade import finished: '+stats.complete+' complete rounds and '+stats.notEvaluable+' incomplete. Select Analyze imported trade flow to inspect directional pressure.';
+   $('historicalFlowStatus').textContent='Historical trade import finished: '+stats.complete+' complete rounds and '+stats.notEvaluable+' incomplete. '+(stats.notEvaluable?'Click Import again to continue saved trade pages. ':'')+'Select Analyze imported trade flow for completed rounds.';
   }catch(e){$('historicalFlowStatus').textContent='Import paused: '+e.message+' Partial data is saved and will resume from the last page on the next import.';}
   finally{busy=false;$('historicalFlowFetch').disabled=!ready;cancelButton.disabled=true;}
  };
