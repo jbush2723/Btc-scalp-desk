@@ -12,6 +12,7 @@ import {settlementProjection,settlementEdge} from './settlement-forecast.js';
 import {candlesFromTicks,drawBrtiCandles} from './brti-candles.js';
 import {startRoundHistory} from './round-history.js';
 import {startSettlementAudit} from './settlement-audit.js';
+import {startPositionTracker} from './position-tracker.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -64,6 +65,8 @@ candleChart.insertAdjacentElement('afterend',candleDetails);
 
 document.querySelector('header').insertAdjacentElement('afterend',cockpit);
 cockpit.append(brtiCard,planCard);
+const positionTracker=startPositionTracker();
+cockpit.insertAdjacentElement('afterend',positionTracker.section);
 const forecastPanel=document.createElement('section');
 forecastPanel.id='settlementForecast';
 forecastPanel.className='card forecast-card';
@@ -273,6 +276,7 @@ function render() {
   put('planReason',frozenPlan?planStatus(plan,{ticker:current?.ticker,quote:q,fresh:bookFresh&&now-bookAt<6000,seconds,action:reading.action}):plan.reason);
   put('planMath',plan.available?'Per contract · gross reward '+cents(plan.reward)+' / planned price risk '+cents(plan.risk)+' · '+plan.ratio.toFixed(2)+':1 gross'+(plan.netRatio===null?' · costs not included':'. With '+plan.costCents.toFixed(1)+'¢ costs: '+cents(plan.netReward)+' reward / '+cents(plan.netRisk)+' planned risk · '+plan.netRatio.toFixed(2)+':1 estimated net'):'Levels appear only when a confirmed signal has enough price room.');
   put('planMeta',plan.available?plan.ticker+' · '+(frozenPlan?'frozen':'calculated')+' '+new Date(plan.at).toLocaleTimeString()+' · ask size at calculation: '+number(plan.size)+' contracts':'');
+  positionTracker.update({plan:latestPlan,ticker:current?.ticker,market:current,quote:q,fresh:bookFresh&&now-bookAt<6000,now});
   $('freezePlan').disabled=!frozenPlan&&!latestPlan.available;
   put('freezePlan',frozenPlan?'Release frozen plan':'Freeze this plan');
   const chart=analyzeChart(signals.samples,now);
