@@ -35,13 +35,13 @@ The backend only permits BTC market discovery, individual market snapshots, orde
 
 ## Data behavior
 
-### UP / DOWN / WAIT signal
+### UP / DOWN / WAIT / SIT OUT signal
 
 The top panel distinguishes the **scalp signal**, the **30-second contract trend**, and the **market's current leaning**. These are transparent, unbacktested heuristic rules, not a BTC/BRTI price forecast, calibrated win probability, or a verified profitable strategy. Fees and slippage are not included.
 
 - UP requires YES midpoint momentum of at least +1¢ over approximately 30 seconds and YES taker-volume shares of at least 60% / 55% / 50% over 10 / 30 / 60 seconds. DOWN mirrors these rules for NO flow and declining YES prices.
 - Confirmation requires three distinct fresh quote snapshots spanning at least four seconds. Repainting the screen cannot confirm a signal.
-- WAIT on conflicting signals, stale/incomplete data, a quote/trade cutoff over six seconds old, a spread above 3¢, fewer than five executions or twenty known-side contracts in ten seconds, more than 10% unknown-side volume in any window, or sixty seconds or less to close.
+- SIT OUT on conflicting signals, stale/incomplete data, a quote/trade cutoff over six seconds old, a spread above 3¢, fewer than five executions or twenty known-side contracts in ten seconds, more than 10% unknown-side volume in any window, or sixty seconds or less to close.
 - Trend uses YES bid/ask midpoint changes, not last-trade bounce. Less than 1¢ movement is SIDEWAYS. Market leaning uses the midpoint relative to 50¢ and can disagree with trend.
 - Thirty seconds of uninterrupted observed quotes are needed at startup and after rollover. Gaps above eight seconds and invalid/crossed books reset quote history. There is no signal when the feed is unavailable.
 
@@ -78,7 +78,7 @@ For frozen plans, hold/half-sale/exit guidance is explicitly conditional on havi
 - Sum contract counts using exchange event timestamps in `(now − window, now]` for 10/30/60 seconds. Prefer `taker_outcome_side`, falling back to legacy `taker_side`. Never interpret `taker_book_side` as YES/NO. Unknown sides are separate; block trades are excluded. Net is YES minus NO contracts, not signed BTC volume or dollar notional.
 - Trade history is complete only through the displayed fetch cutoff; the newest seconds may still be pending. Pagination limits show lower-bound side totals and suppress net. Stale data is hidden after 15 seconds (or 20 seconds behind the trade cutoff).
 - Manual calculators and the local trade journal remain available independently of the feed. Existing journal entries are retained; content is rendered as text.
-- Service worker v8 removes older application caches and never caches API responses. An offline shell does not imply live data.
+- Service worker v9 removes older application caches and never caches API responses. An offline shell does not imply live data.
 
 ## Verify
 
@@ -114,3 +114,9 @@ The server subscribes only to `cfbenchmarks_value` with index `BRTI` at the docu
 `/api/brti` is available only to loopback clients: this integration is for the user’s local dashboard, not public redistribution. Public GitHub Pages contains no key or BRTI data. A remote host alone does not enable this route. Confirm applicable data access and distribution permissions before designing a public feed.
 
 The BRTI panel shows valid fresh ticks, up to 15 minutes of observed history and the supplied trailing 60-second average with its sample count. Partial averages are labeled; no settlement value is inferred. Duplicate/out-of-order, malformed, wrong-index and stale ticks are ignored. Prices hide after five seconds without a fresh source tick. Freshness accounts for local clock offset using the TLS WebSocket handshake Date header, not a price-derived timestamp adjustment. Reconnection clears prior chart history. The entry engine remains based on contract momentum, chart confirmation and executed flow; BRTI is a separate official reference, not an added trading signal.
+
+### Confidence and no-entry states
+
+WAIT means missing/stale data, warmup, unreliable taker-side data or pending chart/snapshot confirmation. SIT OUT means sideways/conflicting direction, a score below 60, insufficient activity, wide spread, final minute or an entry plan failing its price/risk checks. The 1–100 signal confidence is an uncalibrated directional-agreement score, not win probability: 25 × signed momentum capped at ±2 cents, 25 × chart-direction vote, and 20/15/15 × signed taker-share margins capped at ±10 percentage points for 10/30/60 seconds. Project the sum onto the momentum direction, round and clamp to 1–100. Sideways gets 1; missing/stale/insufficient/unreliable data shows no score. Existing entry eligibility and confirmation checks remain required.
+
+The BRTI chart includes the current contract’s published strike as a gold dashed target line. The displayed dollar gap is green with an up arrow above target, red with a down arrow below target, and neutral at target. This is current distance, not a trend or settlement forecast. Missing/expired target or stale BRTI hides the gap. The target switches at rollover; source-price history remains BRTI history.

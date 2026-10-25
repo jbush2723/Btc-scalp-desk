@@ -19,7 +19,7 @@ const controllers = new Set();
 const storage = {get(k) {try{return localStorage.getItem(k)||'';}catch{return '';}}, set(k,v){try{localStorage.setItem(k,v);}catch{}}};
 const local = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let base = storage.get('btcScalpApi') || API_BASE || (local ? location.origin+'/api' : 'https://external-api.kalshi.com/trade-api/v2');
-startBrti(()=>base);
+startBrti(()=>base,()=>current&&closeTime(current)>Date.now()?{price:finite(current.floor_strike),ticker:current.ticker}:null);
 $('feedUrl').value = storage.get('btcScalpApi');
 
 function rows(id, values) {
@@ -126,6 +126,8 @@ function render() {
   const healthy=marketFresh && bookFresh && flowFresh && complete && !lastError;
   const reading=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
   put('scalpAction',reading.action); $('scalpAction').className='signal-action '+(reading.action==='UP'?'up':reading.action==='DOWN'?'down':'warn');
+  put('signalConfidence',reading.confidence===null?'—':reading.confidence+' / 100');
+  put('confidenceMeaning',reading.confidence===null?'Not enough fresh, usable evidence':reading.confidence>=80?'Strong rule agreement':reading.confidence>=60?'Moderate rule agreement':'Weak or conflicting evidence');
   $('signalCard').dataset.direction=reading.action.toLowerCase();
   put('scalpReason',reading.reason);put('trendDirection',reading.trend);
   $('trendDirection').className='big '+(reading.trend==='UP'?'up':reading.trend==='DOWN'?'down':'muted');
@@ -135,7 +137,7 @@ function render() {
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
   const plan=frozenPlan||latestPlan;
-  put('planCall',plan.available?(frozenPlan?'REFERENCE · '+plan.side.toUpperCase()+' entry '+cents(plan.entry):'SUGGESTED ENTRY · BUY '+plan.side.toUpperCase()+' at '+cents(plan.entry)+' or lower'):'WAIT · No entry suggested');
+  put('planCall',plan.available?(frozenPlan?'REFERENCE · '+plan.side.toUpperCase()+' entry '+cents(plan.entry):'SUGGESTED ENTRY · BUY '+plan.side.toUpperCase()+' at '+cents(plan.entry)+' or lower'):(reading.action==='WAIT'?'WAIT · Setup not ready':'SIT OUT · No entry suggested'));
   put('planSide',plan.available?(frozenPlan?'FROZEN · ':'BUY ')+plan.side.toUpperCase():'NO ENTRY');
   put('planEntry',plan.available?cents(plan.entry):'—');put('planTarget',plan.available?cents(plan.target):'—');put('planStop',plan.available?cents(plan.stop):'—');
   put('planHalf',plan.available&&plan.halfTarget!==null?cents(plan.halfTarget):'—');
