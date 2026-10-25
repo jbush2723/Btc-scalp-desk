@@ -33,6 +33,21 @@ Other Node hosts work too: use `HOST=0.0.0.0` and the host's `PORT`. CORS allows
 
 The backend only permits BTC market discovery, individual market snapshots, order-book snapshots and executed trades. It cannot place orders or access portfolios. It uses a fixed documented Kalshi upstream, a brief cache, request coalescing, concurrency limits, timeouts and upstream rate-limit backoff. Denied upstream requests are surfaced rather than retried through alternative identities or hosts.
 
+## As-observed full-model recorder and paper replay (October 25, 2026)
+
+**New feature:** the Node backend records active BTC15M market metadata, actual best bid/ask and top-level order-book liquidity, deduplicated trades with both exchange and first-seen timestamps, and official BRTI observations (when authorized) roughly every five seconds while the server is running. Recorded events are checkpointed to JSON files in `BTC_RECORDER_DIR` or, by default, a **temporary** local directory. Records from the old browser-only one-minute candle importer are **not** enough for this shared-engine replay.
+
+The GitHub Pages dashboard includes **Live-data recorder & actual-model paper replay**. It accesses `/api/model/status`, `/api/model/replay`, and `/api/model/export` using the same private `BRTI_VIEW_TOKEN` from its private viewing-token form. The replay calls the actual `SignalEngine`, `applyBrtiVeto` and `suggestPlan`, requiring complete fresh quote, trade and BRTI coverage before scoring a directional call. It models a buy no earlier than the *next observed ask*, a bid-based exit, displayed available top-of-book quantities, configurable per-side illustrative fees, seven-minute maximum holding time and unresolved outcomes when observations are missing. The report displays data coverage, signals, only hypothetical exits, fees, a bankroll curve and a trade log. **Order placement and execution are not verified.**
+
+### Critical: Render Free will NOT collect durable 24/7 history
+
+The current `render.yaml` specifies `plan: free`. Render Free instances spin down after approximately 15 minutes without inbound traffic and lose local filesystem changes on restart, redeploy or spin-down. Even with regular traffic, upstream 429s and server interruptions produce marked gaps. A `$1,000` replay begun today does not give an instant backtest of older contracts with no recorded order books.
+
+- On Free, open the recorder dashboard and use **Export recorded rounds (JSON)** before deploys or restarts if you want a manual backup. No automatic external backup is configured.
+- For ongoing recording, upgrade the **Render web service instance** to a paid instance, attach a persistent disk at e.g. `/var/data`, and set `BTC_RECORDER_DIR=/var/data/btc-recordings` in the service environment. Merely setting the variable without mounting an actual persistent disk is insufficient.
+- Before real money, evaluate **many** independent complete rounds and out-of-sample data. Compare against a baseline, monitor signal freshness and book gaps, and verify real Kalshi fees and execution assumptions. Reported balances exclude unresolved open exposure.
+- The private export file contains authorized historical BRTI observations; do not share it publicly. Never put Kalshi API secrets in the recorder files or a public repository.
+
 ## Data behavior
 
 ### UP / DOWN / WAIT / SIT OUT signal
