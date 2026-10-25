@@ -45,6 +45,10 @@ function replayRound(round,{balance,stake,feeCents}){
   if(flowFresh)coverage.flowReady++;else coverage.flowMissing++;
   if(feed&&brti?.changePercent!==null)coverage.brtiFresh++;else coverage.brtiMissing++;
   if(!bookFresh){if(pending)pending=null;continue;}
+  if(position&&now-position.lastAt>8000){
+   result.unresolved=true;result.reason='Gap longer than 8 seconds while a position was open; exit price and timing cannot be reconstructed.';
+   position=null;break;
+  }
   engine.record(q,sample.bookAt);
   // Mark an incomplete trade window as unavailable instead of treating its
   // observed partial volumes as evidence for a directional signal.
@@ -72,6 +76,7 @@ function replayRound(round,{balance,stake,feeCents}){
     position=null;break;
    }
    // If the book disappears or the contract closes, do not fabricate an exit.
+   position.lastAt=now;
    continue;
   }
   if(pending){
@@ -85,7 +90,7 @@ function replayRound(round,{balance,stake,feeCents}){
     result.notFilled=true;result.reason='Next observed ask exceeded the entry limit, available size, or spread restriction.';attempted=true;continue;
    }
    attempted=true;
-   position={signalAt:item.signalAt,entryAt:now,entry:ask,side:item.plan.side,qty,
+   position={signalAt:item.signalAt,entryAt:now,lastAt:now,entry:ask,side:item.plan.side,qty,
     entryFee:fee*qty,stop:item.plan.stop,target:item.plan.target};
    result.reason='Hypothetical entry; awaiting observed exit bid.';
    continue;
@@ -131,7 +136,7 @@ export function replayRecordedModel(rounds,{bankroll=1000,stake=50,feeCents=1,ma
  }
  const trades=results.map(r=>r.trade).filter(Boolean);
  return {version:'as-recorded-shared-engine-v1',mode:'PAPER ONLY',
-   assumptions:'Same SignalEngine, BRTI veto and suggestPlan as live. Mandatory fresh trade-flow/quote/BRTI context. Entry at next recorded ask and exits at recorded bid if shown size suffices. No order placement or verified fills. Per-side user-specified fee proxy; not Kalshi exact tier schedule.',
+   assumptions:'Same SignalEngine, BRTI veto and suggestPlan as live. Requires fresh trade-flow, quote and BRTI context; this is stricter than live when BRTI is missing. Entry at next recorded ask and exits at recorded bid only if shown size suffices. Unresolved open exposure is excluded from reported ending bankroll. No order placement or verified fills. Per-side user-specified fee proxy; not Kalshi exact tier schedule.',
    limitations:['As-observed REST snapshots omit order-book changes between samples.','Kalshi rate limits or Render restarts create gaps.','Order queue priority, execution latency and market impact cannot be reconstructed.','No claimed precision or profitability from incomplete rounds.'],
    initialBankroll:bankroll,endingBankroll:balance,pnl:balance-bankroll,
    netReturnPct:100*(balance-bankroll)/bankroll,trades:trades.length,wins,losses,
