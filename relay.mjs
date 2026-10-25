@@ -17,6 +17,12 @@ export function upstreamPath(url) {
     if(p.get('period_interval')!=='1')throw Error('Use actual 1-minute Kalshi candles');
     const start=Number(p.get('start_ts')),end=Number(p.get('end_ts'));
     if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<=0||end<=start||end-start>86400)throw Error('Invalid candle time range');
+  } else if(path==='/historical/trades') {
+    allowed=['ticker','limit','min_ts','max_ts','cursor','is_block_trade'];
+    if(!TICKER.test(p.get('ticker')||''))throw Error('Invalid historical BTC ticker');
+    if(p.get('is_block_trade')!=='false')throw Error('Block trades are excluded');
+    const min=Number(p.get('min_ts')),max=Number(p.get('max_ts'));
+    if(!Number.isSafeInteger(min)||!Number.isSafeInteger(max)||min<=0||max<=min||max-min>3600)throw Error('Historical window invalid');
   } else if(path==='/markets/trades') {
     allowed=['ticker','limit','min_ts','max_ts','cursor','is_block_trade'];
     if(!TICKER.test(p.get('ticker')||''))throw Error('Invalid BTC ticker');
