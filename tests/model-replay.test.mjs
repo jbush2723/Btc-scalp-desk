@@ -64,7 +64,8 @@ test('missing quotes while a simulated position is open cannot fabricate exits',
  }
  const result=replayRecordedModel([round],options);
  assert.equal(result.error,undefined);
- assert.ok(result.unresolved>=0);
+ assert.equal(result.unresolved,1);
+ assert.equal(result.trades,0);
 });
 
 test('invalid bankroll controls cannot produce a performance report',()=>{
