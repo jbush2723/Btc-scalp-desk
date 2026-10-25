@@ -1,12 +1,14 @@
 import {API_BASE} from './config.js';
 import {WINDOWS, finite, price, closeTime, selectMarket, normalizeBook, bookQuote, TradeFlow, fetchTradeWindow} from './flow.js';
 import './manual.js';
+import {SignalEngine} from './signal.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
 const number = n => n === null || !Number.isFinite(n) ? '—' : n.toLocaleString('en-US',{maximumFractionDigits:2});
 const cents = n => n === null || !Number.isFinite(n) ? '—' : (n*100).toFixed(1)+'¢';
 const flow = new TradeFlow();
+const signals = new SignalEngine();
 let current = null, book = null, quote = null, epoch = 0, busy = false, timer;
 let marketAt = 0, bookAt = 0, flowAt = 0, through = 0, complete = false, failures = 0, lastError = '';
 const controllers = new Set();
@@ -25,6 +27,7 @@ function rows(id, values) {
 function resetMarket(m) {
   epoch++; current=m; book=null; quote=null; marketAt=bookAt=flowAt=through=0; complete=false;
   flow.reset(m?.ticker || '');
+  signals.reset();
   put('liveTicker',m?.ticker || 'No active contract');
   put('liveStrike','—'); put('lastPrice','—'); put('marketVolume','—'); put('openInterest','—');
   put('bookStatus','Waiting for order book'); put('flowStatus','Waiting for trade history');
@@ -83,7 +86,7 @@ async function refresh() {
       else updateMarket(m);
     } else errors.push(results[0].reason);
     if(results[1].status==='fulfilled') {
-      try {book=normalizeBook(results[1].value);bookAt=Date.now();} catch(e) {errors.push(e);}
+      try {book=normalizeBook(results[1].value);bookAt=Date.now();signals.record(bookQuote(book),bookAt);} catch(e) {errors.push(e);}
     } else errors.push(results[1].reason);
     if(results[2].status==='fulfilled') {
       const batch=results[2].value;
@@ -116,6 +119,14 @@ function render() {
   const seconds=active ? Math.max(0,Math.ceil((closeTime(current)-now)/1000)) : null;
   put('liveClock',seconds===null?'—':Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0'));
   const healthy=marketFresh && bookFresh && flowFresh && complete && !lastError;
+  const reading=signals.evaluate({now,ready:healthy&&!document.hidden&&now-through<6000,seconds,totals:WINDOWS.map(w=>flow.totals(w,now))});
+  put('scalpAction',reading.action); $('scalpAction').className='signal-action '+(reading.action==='UP'?'up':reading.action==='DOWN'?'down':'warn');
+  $('signalCard').dataset.direction=reading.action.toLowerCase();
+  put('scalpReason',reading.reason);put('trendDirection',reading.trend);
+  $('trendDirection').className='big '+(reading.trend==='UP'?'up':reading.trend==='DOWN'?'down':'muted');
+  put('trendChange',reading.change===null?'Needs 30 seconds of live quotes':(reading.change>=0?'+':'')+reading.change.toFixed(1)+'¢ YES midpoint / ~30s');
+  put('marketLean',reading.lean);
+  put('signalFlow',reading.shares.length?'YES taker share · 10s '+share(reading.shares[0])+' / 30s '+share(reading.shares[1])+' / 60s '+share(reading.shares[2]):'Waiting for confirmed price history');
   const badge=document.hidden?'Paused':healthy?'Updating · REST':marketFresh||bookFresh?'Partial feed':lastError?'Feed unavailable':'Connecting';
   put('feedBadge',badge); $('feedBadge').className='pill '+(healthy?'up':'warn');
   const blocked=/fetch|403|401/i.test(lastError);
@@ -131,6 +142,7 @@ function render() {
   const tape=flowFresh?flow.recent(now):[];
   rows('tapeRows',tape.length?tape.map(t=>[new Date(t.at).toLocaleTimeString(),t.side.toUpperCase(),number(t.count),cents(t.yes),cents(t.no)]):[[flowFresh?'No trades in retained history':'Waiting for fresh trades','—','—','—','—']]);
 }
+function share(value){return value===null?'—':Math.round(value*100)+'%';}
 $('refreshLive').onclick=()=>refresh();
 $('feedForm').onsubmit=e=>{
   e.preventDefault();const raw=$('feedUrl').value.trim().replace(/\/+$/,'');

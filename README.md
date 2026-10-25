@@ -34,6 +34,18 @@ The backend only permits BTC market discovery, individual market snapshots, orde
 
 ## Data behavior
 
+### UP / DOWN / WAIT signal
+
+The top panel distinguishes the **scalp signal**, the **30-second contract trend**, and the **market's current leaning**. These are transparent, unbacktested heuristic rules, not a BTC/BRTI price forecast, calibrated win probability, or a verified profitable strategy. Fees and slippage are not included.
+
+- UP requires YES midpoint momentum of at least +1¢ over approximately 30 seconds and YES taker-volume shares of at least 60% / 55% / 50% over 10 / 30 / 60 seconds. DOWN mirrors these rules for NO flow and declining YES prices.
+- Confirmation requires three distinct fresh quote snapshots spanning at least four seconds. Repainting the screen cannot confirm a signal.
+- WAIT on conflicting signals, stale/incomplete data, a quote/trade cutoff over six seconds old, a spread above 3¢, fewer than five executions or twenty known-side contracts in ten seconds, more than 10% unknown-side volume in any window, or sixty seconds or less to close.
+- Trend uses YES bid/ask midpoint changes, not last-trade bounce. Less than 1¢ movement is SIDEWAYS. Market leaning uses the midpoint relative to 50¢ and can disagree with trend.
+- Thirty seconds of uninterrupted observed quotes are needed at startup and after rollover. Gaps above eight seconds and invalid/crossed books reset quote history. There is no signal when the feed is unavailable.
+
+### Quotes and flow
+
 - Poll every two seconds **after the previous cycle finishes**, pause in hidden tabs, and retry errors with capped exponential backoff. This cadence is not a latency guarantee.
 - Select the active `KXBTC15M` contract using `open_time` and `close_time`, not the later settlement/expiration timestamp. Clear quote, depth and flow state at rollover; ignore late previous-contract responses.
 - Parse fixed-point dollar prices and fractional contract sizes. Prefer the order book for coherent bid/ask snapshots. A YES ask is the complement of the best NO bid, with that bid's size. Empty sides show no price.
@@ -41,12 +53,12 @@ The backend only permits BTC market discovery, individual market snapshots, orde
 - Sum contract counts using exchange event timestamps in `(now − window, now]` for 10/30/60 seconds. Prefer `taker_outcome_side`, falling back to legacy `taker_side`. Never interpret `taker_book_side` as YES/NO. Unknown sides are separate; block trades are excluded. Net is YES minus NO contracts, not signed BTC volume or dollar notional.
 - Trade history is complete only through the displayed fetch cutoff; the newest seconds may still be pending. Pagination limits show lower-bound side totals and suppress net. Stale data is hidden after 15 seconds (or 20 seconds behind the trade cutoff).
 - Manual calculators and the local trade journal remain available independently of the feed. Existing journal entries are retained; content is rendered as text.
-- Service worker v3 removes older application caches and never caches API responses. An offline shell does not imply live data.
+- Service worker v4 removes older application caches and never caches API responses. An offline shell does not imply live data.
 
 ## Verify
 
 ```sh
-node --test tests/flow.test.mjs tests/relay.test.mjs
+node --test tests/*.test.mjs
 node --check app.js
 node --check server.mjs
 ```
