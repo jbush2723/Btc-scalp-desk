@@ -88,3 +88,21 @@ header p{margin:0}
 #roundHistoryChart{width:100%;height:260px;background:#0e192a;border:1px solid #26354c;border-radius:8px}
 #roundHistoryStats{overflow-wrap:anywhere}
 @media(max-width:760px){.round-history-body{grid-template-columns:1fr}.round-history-list{max-height:175px}#roundHistoryChart{height:215px}}
+
+/* Clear trade-state coloring: contract YES/NO and action WAIT/SIT OUT */
+#entryPlanCard .plan-state-yes{color:var(--green)}
+#entryPlanCard .plan-state-no{color:var(--red)}
+#entryPlanCard .plan-state-wait{color:var(--amber)}
+#entryPlanCard .plan-state-sitout{color:#aeb8c8}
+#entryPlanCard .pill.plan-state-yes{background:rgba(98,232,183,.15);border:1px solid rgba(98,232,183,.45)}
+#entryPlanCard .pill.plan-state-no{background:rgba(255,149,156,.15);border:1px solid rgba(255,149,156,.45)}
+#entryPlanCard .pill.plan-state-wait{background:rgba(255,210,122,.14);border:1px solid rgba(255,210,122,.43)}
+#entryPlanCard .pill.plan-state-sitout{background:rgba(174,184,200,.12);border:1px solid rgba(174,184,200,.3)}
+#entryPlanCard[data-plan-state=yes]{border-top:3px solid var(--green)}
+#entryPlanCard[data-plan-state=no]{border-top:3px solid var(--red)}
+#entryPlanCard[data-plan-state=wait]{border-top:3px solid var(--amber)}
+#entryPlanCard[data-plan-state=sitout]{border-top:3px solid #8996ab}
+#cockpitQuotes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#cockpitQuotes .quote-side{display:inline-block;padding:4px 7px;border-radius:6px}
+#cockpitQuotes .quote-side-yes{color:var(--green);background:rgba(98,232,183,.08)}
+#cockpitQuotes .quote-side-no{color:var(--red);background:rgba(255,149,156,.08)}
