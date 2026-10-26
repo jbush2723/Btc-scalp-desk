@@ -90,8 +90,8 @@ export function advancePaperPosition(previous,{plan=null,reading=null,ticker=nul
    }
   }else if(badMarket){
    finish('UNRESOLVED · MARKET CHANGED',null,null,false);
-  }else if(now-old.lastQuoteAt>QUOTE_GAP){
-   message='DATA UNAVAILABLE · live bid is stale. Cannot mark a hypothetical exit.';
+  }else if(!quoteFresh||now-old.lastQuoteAt>QUOTE_GAP){
+   message='DATA UNAVAILABLE · no fresh selling bid. HOLD / EXIT cannot be evaluated until a current book is observed.';
   }else if(bookIsCurrent&&valid(old.lastBid)){
    const gain=pct(old.lastBid,old.entry),sideSize=old.lastBidSize>=old.qty;
    if(sideSize&&old.lastBid<=old.stop){
