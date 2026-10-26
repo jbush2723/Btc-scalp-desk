@@ -43,6 +43,8 @@ test('server recorder captures continuous actual book, trades and BRTI and check
   const persisted=JSON.parse(await readFile(join(dir,ticker+'.json'),'utf8'));
   assert.equal(persisted.samples.length,17);
   assert.equal(persisted.trades.length,119);
+  assert.deepEqual(persisted.samples[0].bookLevels.yes[0],[.45,200]);
+  assert.deepEqual(persisted.samples[0].bookLevels.no[0],[.53,190]);
  }finally{
   await recorder.stop();
   await rm(dir,{force:true,recursive:true});
