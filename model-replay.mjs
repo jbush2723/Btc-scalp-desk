@@ -5,7 +5,7 @@ import {SignalEngine} from './signal.js';
 import {TradeFlow,WINDOWS} from './flow.js';
 import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {suggestPlan} from './plan.js';
-import {astroExperiment,weightedBookSkew,quadraticFee,feeAwareScalpGuard} from './astro-experiment.js';
+import {astroExperiment,weightedBookSkew,indexMomentum,quadraticFee,feeAwareScalpGuard} from './astro-experiment.js';
 
 const numeric=(x,defaultValue)=>Number.isFinite(Number(x))?Number(x):defaultValue;
 const isValidQuote=q=>q&&Number.isFinite(q.yesBid)&&Number.isFinite(q.yesAsk)&&
@@ -59,7 +59,12 @@ function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='
   const base=engine.evaluate({now,ready,seconds:(closeAt-now)/1000,totals:WINDOWS.map(w=>flow.totals(w,now))});
   const reading=applyBrtiVeto(base,brti);
   const strict=ready&&feed&&brti.changePercent!==null;
-  if(strict&&(strategy==='baseline'||depth))coverage.modelEligible++;
+  // Astro's full 5-minute index context is additionally mandatory; counting
+  // a missing history window as "eligible" would inflate the comparison.
+  const fiveMinuteReady=strategy==='astro'&&feed?
+   indexMomentum(round.brtiTicks.filter(t=>t.time<=feed.sourceTime),feed.sourceTime)!==null:false;
+  if(strict&&(strategy==='baseline'||Boolean(depth)&&(strategy!=='astro'||fiveMinuteReady)))
+   coverage.modelEligible++;
   if(position){
    const bid=q[position.side+'Bid'],size=q[position.side+'BidSize'];
    const reason=bid<=position.stop?'STOP':bid>=position.target?'TARGET':
