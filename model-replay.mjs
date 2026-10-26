@@ -6,6 +6,7 @@ import {TradeFlow,WINDOWS} from './flow.js';
 import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {suggestPlan} from './plan.js';
 import {astroExperiment,weightedBookSkew,indexMomentum,quadraticFee,feeAwareScalpGuard} from './astro-experiment.js';
+import {gapProbability,gapConfidenceGate} from './gap-baseline.js';
 
 const numeric=(x,defaultValue)=>Number.isFinite(Number(x))?Number(x):defaultValue;
 const isValidQuote=q=>q&&Number.isFinite(q.yesBid)&&Number.isFinite(q.yesAsk)&&
@@ -16,7 +17,7 @@ function asOfBrti(round,sample){
  const state=sample.brti;
  if(state?.status!=='live'||!Number.isFinite(state.price)||!Number.isFinite(state.sourceTime)||
     !Number.isFinite(state.ageMs)||state.ageMs>5000||sample.at-state.sourceTime>8000)return null;
- const history=round.brtiTicks.filter(t=>t.time<=state.sourceTime&&t.time>=state.sourceTime-46000);
+ const history=round.brtiTicks.filter(t=>t.time<=state.sourceTime&&t.time>=state.sourceTime-360000);
  return {status:'live',price:state.price,sourceTime:state.sourceTime,ageMs:state.ageMs,history};
 }
 
@@ -25,7 +26,7 @@ function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='
  const samples=(round.samples||[]).slice().sort((a,b)=>a.at-b.at);
  const trades=(round.trades||[]).slice().sort((a,b)=>a.seenAt-b.seenAt);
  const coverage={snapshots:samples.length,flowReady:0,freshBook:0,brtiFresh:0,modelEligible:0,
-  brtiMissing:0,flowMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0};
+  brtiMissing:0,flowMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0,gapBlocked:0};
  const result={ticker,closeAt,coverage,signals:[],trade:null,notFilled:false,unresolved:false,reason:'No confirmed setup in recorded data.'};
  if(!ticker||!Number.isFinite(closeAt)||!Number.isFinite(openedAt)||!samples.length)return result;
  const engine=new SignalEngine(),flow=new TradeFlow();flow.reset(ticker);
@@ -63,7 +64,8 @@ function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='
   // a missing history window as "eligible" would inflate the comparison.
   const fiveMinuteReady=strategy==='astro'&&feed?
    indexMomentum(round.brtiTicks.filter(t=>t.time<=feed.sourceTime),feed.sourceTime)!==null:false;
-  if(strict&&(strategy==='baseline'||Boolean(depth)&&(strategy!=='astro'||fiveMinuteReady)))
+  const gapModel=strategy==='gap'&&feed?gapProbability({snapshot:feed,strike:round.market.strike,closeAt,now}):null;
+  if(strict&&(strategy==='baseline'||(strategy==='gap'?Boolean(gapModel?.ready):Boolean(depth)&&(strategy!=='astro'||fiveMinuteReady))))
    coverage.modelEligible++;
   if(position){
    const bid=q[position.side+'Bid'],size=q[position.side+'BidSize'];
@@ -118,7 +120,13 @@ function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='
   // branches additionally require recorded top-ten depth, never inferred depth.
   if(!strict||attempted)continue;
   let experimental=null,proposal=reading;
-  if(strategy==='astro'){
+  if(strategy==='gap'){
+   if(!gapModel?.ready)continue;
+   const paper=gapConfidenceGate(gapModel,q);
+   proposal={action:paper.action,
+    confidence:Math.round(100*Math.max(gapModel.pYes,gapModel.pNo)),reason:paper.reason};
+   if(paper.action==='WAIT'){coverage.gapBlocked++;continue;}
+  }else if(strategy==='astro'){
    if(!depth)continue;
    const ticks=round.brtiTicks.filter(x=>x.time<=feed.sourceTime);
    experimental=astroExperiment({book:sample.bookLevels,quote:q,brtiTicks:ticks,
@@ -158,7 +166,7 @@ export function replayRecordedModel(rounds,{
  if(!Number.isFinite(bankroll)||!Number.isFinite(stake)||!Number.isFinite(feeCents)||
    bankroll<=0||bankroll>1000000||stake<=0||stake>100000||feeCents<0||feeCents>20||
    !Number.isInteger(maxRounds)||maxRounds<1||maxRounds>60||
-   !['baseline','astro','hybrid'].includes(strategy)||!['quadratic','fixed'].includes(feeMode)||
+   !['baseline','astro','hybrid','gap'].includes(strategy)||!['quadratic','fixed'].includes(feeMode)||
    !Number.isFinite(feeRate)||feeRate<0||feeRate>1||
    !Number.isFinite(maxDailyLoss)||maxDailyLoss<0||maxDailyLoss>1000000||
    !Number.isInteger(maxDailyTrades)||maxDailyTrades<1||maxDailyTrades>500||
@@ -170,7 +178,7 @@ export function replayRecordedModel(rounds,{
  const selected=[...rounds].filter(r=>r?.market?.closeAt<=Date.now())
   .sort((a,b)=>a.market.closeAt-b.market.closeAt).slice(-maxRounds);
  const covered={snapshots:0,flowReady:0,brtiFresh:0,modelEligible:0,flowMissing:0,
-  brtiMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0};
+  brtiMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0,gapBlocked:0};
  for(const round of selected){
   const day=new Date(round.market.closeAt).toISOString().slice(0,10);
   const prior=daily.get(day)||{trades:0,losses:0};
@@ -203,10 +211,13 @@ export function replayRecordedModel(rounds,{
    risk:{maxDailyLoss,maxDailyTrades,maxExposure,minNetRatio,riskBlocked},
    assumptions:strategy==='baseline'?
      'Existing SignalEngine, BRTI veto and suggestPlan. Entries/exits hypothesized using the next observed ask and subsequent bid. Comparisons use common quadratic fees and risk gates; the live signal rules remain unchanged.':
+     strategy==='gap'?
+     'EXPERIMENT: five-minute BRTI volatility M0 averaged-settlement gap probability plus 95% confidence and settlement-only fee EV gate. Scalp exits are priced separately; not calibrated.':
      strategy==='astro'?
      'EXPERIMENT: 60% BRTI momentum + 40% weighted ten-level orderbook imbalance, a heuristic probability edge and entry-fee filters. Not a calibrated probability or trained model.':
      'EXPERIMENT: Existing live SignalEngine + aligned weighted orderbook skew, BRTI veto and common quadratic fee/risk gate.',
    limitations:['As-observed snapshots miss interim order-book changes and fills.',
+     'Gap model uses a short uncalibrated 5-minute BRTI volatility estimate; it is not the original Chronos or trained LightGBM model.',
     'Older recordings without observed ten-level depth are ineligible for Astro/hybrid.',
     'Kalshi fee model is an estimate; verify the series fee schedule before any real order.',
     'Unresolved exposure is excluded from ending bankroll, so P/L may be incomplete.',
@@ -224,13 +235,15 @@ export function compareRecordedStrategies(rounds,options={}){
  const baseline=replayRecordedModel(rounds,{...params,strategy:'baseline'});
  const astro=replayRecordedModel(rounds,{...params,strategy:'astro'});
  const hybrid=replayRecordedModel(rounds,{...params,strategy:'hybrid'});
- if(baseline.error||astro.error||hybrid.error)
-  return {error:baseline.error||astro.error||hybrid.error};
- return {version:'astro-hybrid-paper-comparison-v1',mode:'PAPER ONLY',
+ const gap=replayRecordedModel(rounds,{...params,strategy:'gap'});
+ if(baseline.error||astro.error||hybrid.error||gap.error)
+  return {error:baseline.error||astro.error||hybrid.error||gap.error};
+ return {version:'four-way-paper-comparison-v1',mode:'PAPER ONLY',
   dataNote:'Exactly the same completed recorded contracts, common ask-to-bid fill assumptions, Kalshi quadratic taker-fee estimates, spread limits, stake and daily risk gates. Models have different eligibility; compare coverage before performance. Experimental probabilities are NOT calibrated.',
   scenarios:[
    {id:'baseline',label:'Current model + common fee/risk rules',...baseline},
    {id:'astro',label:'AstroTick-inspired (experimental)',...astro},
-   {id:'hybrid',label:'Current model + aligned book skew (experimental)',...hybrid}
+   {id:'hybrid',label:'Current model + aligned book skew (experimental)',...hybrid},
+   {id:'gap',label:'M0 gap + 95% fee filter (experimental)',...gap}
   ]};
 }
