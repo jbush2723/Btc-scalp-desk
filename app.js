@@ -18,6 +18,7 @@ import {installHistoricalReplay} from './historical-replay.js';
 import {installKalshiHistory} from './kalshi-history.js';
 import {installHistoricalFlow} from './historical-flow.js';
 import {installFullReplay} from './full-replay-ui.js';
+import {installAstroDiagnostics} from './astro-live-ui.js';
 
 const $ = id => document.getElementById(id);
 const put = (id, text) => { $(id).textContent = text; };
@@ -85,7 +86,8 @@ lastSignal.insertAdjacentElement('afterend',expectedMove);
 
 
 cockpit.insertAdjacentElement('afterend',paperPosition.section);
-paperPosition.section.insertAdjacentElement('afterend',positionTracker.section);
+const astroDiagnostics=installAstroDiagnostics(paperPosition.section);
+astroDiagnostics.panel.insertAdjacentElement('afterend',positionTracker.section);
 const forecastPanel=document.createElement('section');
 forecastPanel.id='settlementForecast';
 forecastPanel.className='card forecast-card';
@@ -286,6 +288,9 @@ function render() {
   recordSignalAudit({ticker:current?.ticker,action:reading.action,score:reading.confidence,quote:bookFresh?bookQuote(book):null,now,quoteAt:bookAt,closeAt:active?closeTime(current):null,fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
   const rawCosts=$('planCosts').value.trim();
   latestPlan=suggestPlan({reading,quote:q,samples:signals.samples,market:current,now,costCents:rawCosts===''?null:Number(rawCosts)});
+  astroDiagnostics.update({book:bookFresh?book:null,quote:bookFresh?bookQuote(book):null,
+   brtiTicks:historicalTicks,now,closeAt:active?closeTime(current):null,plan:latestPlan,
+   fresh:healthy&&now-bookAt<6000&&!document.hidden&&candleSnapshot?.status==='live'});
   paperPosition.update({plan:latestPlan,reading,ticker:current?.ticker||null,quote:bookFresh?bookQuote(book):null,
    samples:signals.samples,bookAt,now,closeAt:active?closeTime(current):null,
    fresh:healthy&&now-bookAt<6000&&now-through<6000&&!document.hidden});
