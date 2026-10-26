@@ -188,3 +188,11 @@ header p{margin:0}
 .paper-position #paperPredictedReturn{font-weight:800}
 .paper-position #paperPredictionNote{line-height:1.55}
 @media(max-width:640px){.paper-position .paper-projection-grid{grid-template-columns:1fr 1fr}.paper-position .paper-projection-grid .metric:last-child{grid-column:span 2}}
+
+/* Non-trading AstroTick comparison diagnostics, separate from live signal card. */
+.astro-experiment{border-left:3px solid #8aa7db}
+.astro-live-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+.astro-live-grid .metric{min-width:0;padding:11px}
+.astro-live-grid h3{font-size:11px;margin-bottom:7px}
+.astro-live-grid .big{font-size:clamp(17px,2vw,25px);overflow-wrap:anywhere}
+@media(max-width:760px){.astro-live-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
