@@ -146,7 +146,12 @@ export class MarketRecorder {
    const sampleAt=this.now(),feed=this.brti?.snapshot?.()||{status:'unavailable'};
    this.recordBrti(round,sampleAt);
    const fresh=flow.complete&&flow.through&&sampleAt-flow.through<6000&&round.coverageStart!==null&&flow.through-round.coverageStart>=60000;
-   round.samples.push({at:sampleAt,bookAt:observedAt,quote,tradeThrough:flow.through,
+   // Preserve top-ten levels for an independent AstroTick-style depth-imbalance
+   // benchmark. Older records without bookLevels stay usable for baseline
+   // testing but can NEVER be claimed as observed depth for this benchmark.
+   round.samples.push({at:sampleAt,bookAt:observedAt,quote,
+    bookLevels:{yes:book.yes.slice(0,10),no:book.no.slice(0,10)},
+    tradeThrough:flow.through,
     flowReady:Boolean(fresh),marketFresh:!!metadata||now-this.lastMarket<=15000,
     brti:{status:feed.status,price:feed.price??null,sourceTime:feed.sourceTime??null,ageMs:feed.ageMs??null}});
    round.updatedAt=sampleAt;this.lastSampleAt=sampleAt;
