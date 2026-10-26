@@ -1,0 +1,29 @@
+name: BTC model tests
+on:
+  push:
+    branches:
+      - main
+      - feat/gap-volatility-benchmark-2026-10-25
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run unit and replay checks
+        run: npm test
+      - name: Check JavaScript syntax
+        run: |
+          for file in *.js *.mjs tests/*.test.mjs; do
+            node --check "$file"
+          done
