@@ -15,8 +15,10 @@ const isValidQuote=q=>q&&Number.isFinite(q.yesBid)&&Number.isFinite(q.yesAsk)&&
 
 function asOfBrti(round,sample){
  const state=sample.brti;
- if(state?.status!=='live'||!Number.isFinite(state.price)||!Number.isFinite(state.sourceTime)||
-    !Number.isFinite(state.ageMs)||state.ageMs>5000||sample.at-state.sourceTime>8000)return null;
+ if(state?.status!=='live'||!Number.isFinite(state.price)||state.price<=0||
+    !Number.isFinite(state.sourceTime)||!Number.isFinite(state.ageMs)||
+    state.ageMs<0||state.ageMs>5000||!Number.isFinite(sample.at)||
+    sample.at-state.sourceTime<0||sample.at-state.sourceTime>8000)return null;
  const history=round.brtiTicks.filter(t=>t.time<=state.sourceTime&&t.time>=state.sourceTime-360000);
  return {status:'live',price:state.price,sourceTime:state.sourceTime,ageMs:state.ageMs,history};
 }
