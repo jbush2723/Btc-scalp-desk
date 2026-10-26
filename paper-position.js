@@ -160,7 +160,7 @@ export function startPaperPosition(){
  section.className='card paper-position';
  section.id='paperPosition';
  section.innerHTML=`<div class="section-head"><h2>Hypothetical open position · live HOLD / EXIT</h2><span class="pill" id="paperBadge">NO PAPER POSITION</span></div>
- <p class="small muted">Automatically follows the actual confirmed live entry plan at the next qualifying ask. Monitors the same contract's selling bid until the earlier of +7 minutes or 1 minute before close. **Paper-only**: no order is placed, no fill or profit is guaranteed.</p>
+ <p class="small muted">Automatically follows the actual confirmed live entry plan at the next qualifying ask. Monitors the same contract's selling bid until the earlier of +7 minutes or 1 minute before close. <strong>Paper-only</strong>: no order is placed, no fill or profit is guaranteed.</p>
  <div class="paper-layout">
   <div class="paper-decision">
    <div class="eyebrow" id="paperSide">AWAITING A CONFIRMED SETUP</div>
@@ -192,8 +192,11 @@ export function startPaperPosition(){
   const p=state.active||state.pending||state.last;
   const active=state.active,closed=state.last&&!active&&!state.pending;
   const curr=active||closed?state.active||state.last:null;
-  const gross=active&&valid(active.lastBid)?pct(active.lastBid,active.entry):closed?state.last.grossPct:null;
-  const bid=active?active.lastBid:closed?state.last.exitBid:null;
+  // Do not show stale marks as "current" after the order book is unavailable.
+  const markUsable=active&&!message.startsWith('DATA UNAVAILABLE')&&
+   !message.startsWith('Exit deadline reached');
+  const bid=active?(markUsable?active.lastBid:null):closed?state.last.exitBid:null;
+  const gross=active&&valid(bid)?pct(bid,active.entry):closed?state.last.grossPct:null;
   const remaining=active?Math.min(active.enteredAt+HOLD_MS,active.closeAt-CLOSE_BUFFER)-now:
    state.pending?state.pending.cutoff-now:null;
   const stateLabel=active?
