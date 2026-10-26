@@ -10,7 +10,10 @@ export function normalizeBook(data) {
   const fp = data?.orderbook_fp, legacy = data?.orderbook;
   const levels = (rows, divisor = 1) => (Array.isArray(rows) ? rows : []).map(([p,q]) => [price(finite(p) === null ? null : Number(p) / divisor), finite(q)])
     .filter(([p,q]) => p !== null && q !== null && q > 0).sort((a,b) => b[0] - a[0]);
-  if (fp) return { yes: levels(fp.yes_dollars), no: levels(fp.no_dollars) };
+  // Kalshi API v2 may supply either _dollars or _dollars_fp arrays.
+  // Both carry dollar prices and decimal/fixed-point quantities.
+  if (fp) return { yes: levels(fp.yes_dollars_fp?.length ? fp.yes_dollars_fp : fp.yes_dollars),
+    no: levels(fp.no_dollars_fp?.length ? fp.no_dollars_fp : fp.no_dollars) };
   if (data?.t === 'book') return { yes: levels(data.yes), no: levels(data.no) };
   if (legacy) return { yes: levels(legacy.yes, 100), no: levels(legacy.no, 100) };
   throw Error('Unrecognized order book response');
