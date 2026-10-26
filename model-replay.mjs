@@ -142,35 +142,90 @@ function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='
  return result;
 }
 
-export function replayRecordedModel(rounds,{bankroll=1000,stake=50,feeCents=1,maxRounds=30}={}){
+export function replayRecordedModel(rounds,{
+ bankroll=1000,stake=50,feeCents=1,maxRounds=30,strategy='baseline',feeMode='fixed',
+ feeRate=.07,maxDailyLoss=100,maxDailyTrades=10,maxExposure=50,minNetRatio=1.5
+}={}){
  bankroll=numeric(bankroll,NaN);stake=numeric(stake,NaN);feeCents=numeric(feeCents,NaN);
- maxRounds=numeric(maxRounds,30);
+ maxRounds=numeric(maxRounds,NaN);feeRate=numeric(feeRate,NaN);
+ maxDailyLoss=numeric(maxDailyLoss,NaN);maxDailyTrades=numeric(maxDailyTrades,NaN);
+ maxExposure=numeric(maxExposure,NaN);minNetRatio=numeric(minNetRatio,NaN);
  if(!Number.isFinite(bankroll)||!Number.isFinite(stake)||!Number.isFinite(feeCents)||
    bankroll<=0||bankroll>1000000||stake<=0||stake>100000||feeCents<0||feeCents>20||
-   !Number.isInteger(maxRounds)||maxRounds<1||maxRounds>60)return {error:'Invalid replay controls'};
- let balance=bankroll,peak=bankroll,maxDrawdown=0,wins=0,losses=0,unresolved=0,notFilled=0,signalCount=0;
- const results=[],equity=[{at:null,balance}];
- const selected=[...rounds].filter(r=>r?.market?.closeAt<=Date.now()).sort((a,b)=>a.market.closeAt-b.market.closeAt).slice(-maxRounds);
- const covered={snapshots:0,flowReady:0,brtiFresh:0,modelEligible:0,flowMissing:0,brtiMissing:0,staleBook:0};
+   !Number.isInteger(maxRounds)||maxRounds<1||maxRounds>60||
+   !['baseline','astro','hybrid'].includes(strategy)||!['quadratic','fixed'].includes(feeMode)||
+   !Number.isFinite(feeRate)||feeRate<0||feeRate>1||
+   !Number.isFinite(maxDailyLoss)||maxDailyLoss<0||maxDailyLoss>1000000||
+   !Number.isInteger(maxDailyTrades)||maxDailyTrades<1||maxDailyTrades>500||
+   !Number.isFinite(maxExposure)||maxExposure<=0||maxExposure>1000000||
+   !Number.isFinite(minNetRatio)||minNetRatio<0||minNetRatio>20)
+  return {error:'Invalid replay controls'};
+ let balance=bankroll,peak=bankroll,maxDrawdown=0,wins=0,losses=0,unresolved=0,notFilled=0,signalCount=0,riskBlocked=0;
+ const results=[],equity=[{at:null,balance}],daily=new Map();
+ const selected=[...rounds].filter(r=>r?.market?.closeAt<=Date.now())
+  .sort((a,b)=>a.market.closeAt-b.market.closeAt).slice(-maxRounds);
+ const covered={snapshots:0,flowReady:0,brtiFresh:0,modelEligible:0,flowMissing:0,
+  brtiMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0};
  for(const round of selected){
-  const item=replayRound(round,{balance,stake,feeCents});
+  const day=new Date(round.market.closeAt).toISOString().slice(0,10);
+  const prior=daily.get(day)||{trades:0,losses:0};
+  if(prior.trades>=maxDailyTrades||prior.losses>=maxDailyLoss||balance<=0){
+   riskBlocked++;
+   results.push({ticker:round.market.ticker,closeAt:round.market.closeAt,
+    coverage:Object.fromEntries(Object.keys(covered).map(key=>[key,0])),
+    signals:[],trade:null,notFilled:false,unresolved:false,
+    reason:'Risk gate blocked new entry: daily loss/trades threshold or depleted simulated balance.'});
+   continue;
+  }
+  const item=replayRound(round,{balance,stake:Math.min(stake,maxExposure),feeCents,
+    strategy,feeMode,maxExposure,feeRate,minNetRatio});
   results.push(item);signalCount+=item.signals.length;
   if(item.unresolved)unresolved++;
   if(item.notFilled)notFilled++;
   if(item.trade){
    balance+=item.trade.pnl;
    if(item.trade.pnl>0)wins++;else losses++;
+   prior.trades++;
+   if(item.trade.pnl<0)prior.losses-=item.trade.pnl;
+   daily.set(day,prior);
    peak=Math.max(peak,balance);maxDrawdown=Math.max(maxDrawdown,(peak-balance)/peak);
    equity.push({at:item.trade.exitAt,balance});
   }
   for(const k of Object.keys(covered))covered[k]+=item.coverage[k]||0;
  }
  const trades=results.map(r=>r.trade).filter(Boolean);
- return {version:'as-recorded-shared-engine-v1',mode:'PAPER ONLY',
-   assumptions:'Same SignalEngine, BRTI veto and suggestPlan as live. Requires fresh trade-flow, quote and BRTI context; this is stricter than live when BRTI is missing. Entry at next recorded ask and exits at recorded bid only if shown size suffices. Unresolved open exposure is excluded from reported ending bankroll. No order placement or verified fills. Per-side user-specified fee proxy; not Kalshi exact tier schedule.',
-   limitations:['As-observed REST snapshots omit order-book changes between samples.','Kalshi rate limits or Render restarts create gaps.','Order queue priority, execution latency and market impact cannot be reconstructed.','No claimed precision or profitability from incomplete rounds.'],
+ return {version:'as-recorded-model-comparison-v2',mode:'PAPER ONLY',strategy,feeMode,feeRate,
+   risk:{maxDailyLoss,maxDailyTrades,maxExposure,minNetRatio,riskBlocked},
+   assumptions:strategy==='baseline'?
+     'Existing SignalEngine, BRTI veto and suggestPlan. Entries/exits hypothesized using the next observed ask and subsequent bid. Comparisons use common quadratic fees and risk gates; the live signal rules remain unchanged.':
+     strategy==='astro'?
+     'EXPERIMENT: 60% BRTI momentum + 40% weighted ten-level orderbook imbalance, a heuristic probability edge and entry-fee filters. Not a calibrated probability or trained model.':
+     'EXPERIMENT: Existing live SignalEngine + aligned weighted orderbook skew, BRTI veto and common quadratic fee/risk gate.',
+   limitations:['As-observed snapshots miss interim order-book changes and fills.',
+    'Older recordings without observed ten-level depth are ineligible for Astro/hybrid.',
+    'Kalshi fee model is an estimate; verify the series fee schedule before any real order.',
+    'Unresolved exposure is excluded from ending bankroll, so P/L may be incomplete.',
+    'No model is a tested trading advantage until out-of-sample net results exist.'],
    initialBankroll:bankroll,endingBankroll:balance,pnl:balance-bankroll,
    netReturnPct:100*(balance-bankroll)/bankroll,trades:trades.length,wins,losses,
    winRate:trades.length?wins/trades.length:null,maxDrawdown,signalCount,notFilled,unresolved,
-   covered,rounds:results.length,equity,tradeLog:trades,roundResults:results.slice(-30).map(({ticker,closeAt,coverage,signals,reason,notFilled,unresolved,trade})=>({ticker,closeAt,coverage,signals,reason,notFilled,unresolved,traded:!!trade}))};
+   covered,rounds:results.length,equity,tradeLog:trades,
+   roundResults:results.slice(-30).map(({ticker,closeAt,coverage,signals,reason,notFilled,unresolved,trade})=>
+    ({ticker,closeAt,coverage,signals,reason,notFilled,unresolved,traded:!!trade}))};
+}
+
+export function compareRecordedStrategies(rounds,options={}){
+ const params={...options,feeMode:'quadratic'};
+ const baseline=replayRecordedModel(rounds,{...params,strategy:'baseline'});
+ const astro=replayRecordedModel(rounds,{...params,strategy:'astro'});
+ const hybrid=replayRecordedModel(rounds,{...params,strategy:'hybrid'});
+ if(baseline.error||astro.error||hybrid.error)
+  return {error:baseline.error||astro.error||hybrid.error};
+ return {version:'astro-hybrid-paper-comparison-v1',mode:'PAPER ONLY',
+  dataNote:'Exactly the same completed recorded contracts, common ask-to-bid fill assumptions, Kalshi quadratic taker-fee estimates, spread limits, stake and daily risk gates. Models have different eligibility; compare coverage before performance. Experimental probabilities are NOT calibrated.',
+  scenarios:[
+   {id:'baseline',label:'Current model + common fee/risk rules',...baseline},
+   {id:'astro',label:'AstroTick-inspired (experimental)',...astro},
+   {id:'hybrid',label:'Current model + aligned book skew (experimental)',...hybrid}
+  ]};
 }
