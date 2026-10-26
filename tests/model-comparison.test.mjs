@@ -25,20 +25,21 @@ function fixture({depth=true,flow=true}={}){
   price_ranges:[{start:.01,end:1,step:.01}]},samples,trades,brtiTicks};
 }
 
-test('comparison returns three strategies with identical round counts and quadratic fees',()=>{
+test('comparison returns four strategies with identical round counts and quadratic fees',()=>{
  const r=compareRecordedStrategies([fixture()],{bankroll:1000,stake:50,
   maxRounds:10,maxDailyLoss:100,maxDailyTrades:10,maxExposure:50});
  assert.equal(r.error,undefined);
- assert.deepEqual(r.scenarios.map(s=>s.strategy),['baseline','astro','hybrid']);
+ assert.deepEqual(r.scenarios.map(s=>s.strategy),['baseline','astro','hybrid','gap']);
  assert.ok(r.scenarios.every(s=>s.feeMode==='quadratic'&&s.rounds===1));
  assert.ok(r.scenarios.every(s=>s.initialBankroll===1000));
  assert.ok(r.scenarios.every(s=>s.trades===0||Number.isFinite(s.pnl)));
 });
-test('older recordings without actual depth are NEVER eligible for experimental strategies',()=>{
+test('older recordings without depth exclude Astro/hybrid, but not the independent gap model',()=>{
  const r=compareRecordedStrategies([fixture({depth:false})],{bankroll:1000,stake:50,maxRounds:10});
  assert.ok(r.scenarios[0].covered.modelEligible>0);
  assert.equal(r.scenarios[1].covered.modelEligible,0);
  assert.equal(r.scenarios[2].covered.modelEligible,0);
+ assert.ok(r.scenarios[3].covered.modelEligible>0);
  assert.equal(r.scenarios[1].trades,0);
  assert.equal(r.scenarios[2].trades,0);
  assert.ok(r.scenarios[1].covered.depthMissing>0);
