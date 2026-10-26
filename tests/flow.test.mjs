@@ -31,6 +31,9 @@ test('book sorting, dollar fixed points and complementary ask sizes',()=>{
   const q=bookQuote(b);assert.equal(q.yesBid,.8);assert.ok(Math.abs(q.yesAsk-.81)<1e-9);assert.equal(q.yesAskSize,7.5);assert.equal(q.noAskSize,5);
   assert.equal(bookQuote(normalizeBook({orderbook_fp:{yes_dollars:[],no_dollars:[]}})).yesAsk,null);
   assert.equal(bookQuote(normalizeBook({t:'book',yes:[[.8,5]],no:[[.19,7]]})).yesBid,.8);
+  const fp=normalizeBook({orderbook_fp:{yes_dollars_fp:[['0.61','12.5']],no_dollars_fp:[['0.37','9.0']]}});
+  assert.equal(bookQuote(fp).yesBid,.61);
+  assert.equal(bookQuote(fp).yesAskSize,9);
 });
 test('pagination follows cursors and freezes bounds; truncation is explicit',async()=>{
   const calls=[];const get=async path=>{calls.push(new URL(path,'https://test').searchParams);return calls.length===1?{trades:[trade('a',1,'yes')],cursor:'next'}:{trades:[trade('b',2,'no')],cursor:''};};
