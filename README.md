@@ -58,6 +58,24 @@ The separate **experimental projected gross return** is based on the observed pr
 
 The original 7-minute scalp audit now records the earlier of the same seven-minute horizon or one-minute pre-close buffer. Earlier exits are counted separately (`cutoff_exit`) from full 7-minute samples (`complete`), and only the last observed bid in the 15 seconds BEFORE the cutoff can mark a hypothetical exit. A genuine unexpected contract switch gets `market_changed`; a normal expired-contract rollover gets `market_closed` if no valid exit quote was observed. Disconnections are reported as `data_gap` or `exit_quote_missing`. Existing browser-local audit records remain in place; missing historical quotes are not retroactively guessed.
 
+## AstroTick-inspired experimental comparison (October 25, 2026)
+
+This project retains the **original SignalEngine/BRTI veto and live BUY/WAIT behavior**. The two new models are **independent, paper-only experiments** inspired by [AstroTick](https://github.com/Razzleberryss/AstroTick) (Apache-2.0):
+
+1. **AstroTick-inspired**: 60% normalized five-minute *observed official BRTI* momentum plus 40% price-weighted YES/NO top-ten bid imbalance. A clipped midpoint-plus-score "YES probability" is a **heuristic**, not a trained or calibrated probability. Its edge check, fee-sensitive 35–56¢ forbidden band, maximum probability deviation and fee-aware hypothetical settlement EV filter follow the ideas in AstroTick. Our port keeps a tighter **3¢** maximum spread appropriate for scalp research, rather than its permissive default.
+2. **Hybrid**: our existing trade-pressure / quote-momentum / fast-slow chart / BRTI-veto entry, plus a *same-direction* weighted order-book skew of at least 10 percentage points. No new signal is produced by skew alone.
+3. **Baseline**: our unchanged live signal rules, with the same estimated fee and paper-risk gates as the other two **for fair comparison**. The comparison's fee/risk gating is additional to the existing standalone baseline replay, and does not modify live entry eligibility.
+
+The server recorder saves top-ten *observed* bid levels in each new BTC15M order-book sample. **Previously recorded market samples did not capture those levels** and cannot be backfilled accurately from one-minute candles. The comparison refuses to run Astro/hybrid on those depth-missing observations; "0 trades" is not evidence of failure. AstroTick-inspired five-minute BRTI context similarly requires five minutes of source-timestamped historical index values. All three share the same contract set, baseline quote snapshots, hypothetical next-ask entry, displayed size, 7-minute / pre-close bid exit, and **quadratic taker fee estimates**.
+
+The common paper risk limits default to **$50 maximum stake/exposure per entry, $100 maximum cumulative realized losses per UTC day, and 10 completed trades per UTC day**. The fee-aware gate also requires a net target reward-to-risk ratio of at least 1.5, evaluated against published plan targets and the quadratic fee estimate. It never submits an order and cannot establish whether the displayed liquidity was actually executable. Unknown outcomes/exposure are flagged separately, not counted as completed gains.
+
+- See **AstroTick-inspired research · live order-book skew** for live read-only signals and the illustrative fees.
+- In **Live-data recorder & actual-model paper replay**, select **Compare three paper strategies** to view the side-by-side results.
+- Kalshi's [fees Help Center](https://help.kalshi.com/en/articles/13823805-fees) explains that markets can have differing fee schedules. This app models the general 7% quadratic taker formula with per-*order* cent rounding; it does not verify fees or fills in a live account.
+- Do **not** interpret the heuristic YES probability as a tested likelihood or the resulting "settlement EV" as an expectation of profit from selling in seven minutes. Compare *actual paper scalp P/L after cost estimates* over enough complete out-of-sample rounds.
+- Render Free stores the server-recorded order books on an **ephemeral** filesystem; deploys/restarts can erase history unless persisted externally or exported. Do not describe the comparison as durable historical evidence without checked coverage.
+
 ## Data behavior
 
 ### UP / DOWN / WAIT / SIT OUT signal
