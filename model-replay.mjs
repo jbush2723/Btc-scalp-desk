@@ -5,6 +5,7 @@ import {SignalEngine} from './signal.js';
 import {TradeFlow,WINDOWS} from './flow.js';
 import {evaluateBrtiContext,applyBrtiVeto} from './market-context.js';
 import {suggestPlan} from './plan.js';
+import {astroExperiment,weightedBookSkew,quadraticFee,feeAwareScalpGuard} from './astro-experiment.js';
 
 const numeric=(x,defaultValue)=>Number.isFinite(Number(x))?Number(x):defaultValue;
 const isValidQuote=q=>q&&Number.isFinite(q.yesBid)&&Number.isFinite(q.yesAsk)&&
@@ -19,12 +20,12 @@ function asOfBrti(round,sample){
  return {status:'live',price:state.price,sourceTime:state.sourceTime,ageMs:state.ageMs,history};
 }
 
-function replayRound(round,{balance,stake,feeCents}){
+function replayRound(round,{balance,stake,feeCents,strategy='baseline',feeMode='fixed',maxExposure=stake,feeRate=.07,minNetRatio=1.5}){
  const ticker=round.market?.ticker,closeAt=round.market?.closeAt,openedAt=round.market?.openAt;
  const samples=(round.samples||[]).slice().sort((a,b)=>a.at-b.at);
  const trades=(round.trades||[]).slice().sort((a,b)=>a.seenAt-b.seenAt);
  const coverage={snapshots:samples.length,flowReady:0,freshBook:0,brtiFresh:0,modelEligible:0,
-  brtiMissing:0,flowMissing:0,staleBook:0};
+  brtiMissing:0,flowMissing:0,staleBook:0,depthReady:0,depthMissing:0,feeBlocked:0,skewBlocked:0};
  const result={ticker,closeAt,coverage,signals:[],trade:null,notFilled:false,unresolved:false,reason:'No confirmed setup in recorded data.'};
  if(!ticker||!Number.isFinite(closeAt)||!Number.isFinite(openedAt)||!samples.length)return result;
  const engine=new SignalEngine(),flow=new TradeFlow();flow.reset(ticker);
@@ -41,6 +42,8 @@ function replayRound(round,{balance,stake,feeCents}){
   const q=sample.quote,bookFresh=now-sample.bookAt<=6000&&now-sample.bookAt>=0&&isValidQuote(q);
   const flowFresh=sample.flowReady&&now-sample.tradeThrough<6000&&now-sample.tradeThrough>=0;
   const feed=asOfBrti(round,sample),brti=feed?evaluateBrtiContext(feed,round.market.strike):null;
+  const depth=weightedBookSkew(sample.bookLevels);
+  if(depth)coverage.depthReady++;else coverage.depthMissing++;
   if(bookFresh)coverage.freshBook++;else coverage.staleBook++;
   if(flowFresh)coverage.flowReady++;else coverage.flowMissing++;
   if(feed&&brti?.changePercent!==null)coverage.brtiFresh++;else coverage.brtiMissing++;
@@ -56,7 +59,7 @@ function replayRound(round,{balance,stake,feeCents}){
   const base=engine.evaluate({now,ready,seconds:(closeAt-now)/1000,totals:WINDOWS.map(w=>flow.totals(w,now))});
   const reading=applyBrtiVeto(base,brti);
   const strict=ready&&feed&&brti.changePercent!==null;
-  if(strict)coverage.modelEligible++;
+  if(strict&&(strategy==='baseline'||depth))coverage.modelEligible++;
   if(position){
    const bid=q[position.side+'Bid'],size=q[position.side+'BidSize'];
    const reason=bid<=position.stop?'STOP':bid>=position.target?'TARGET':
@@ -65,7 +68,7 @@ function replayRound(round,{balance,stake,feeCents}){
     if(!Number.isFinite(bid)||!Number.isFinite(size)||size<position.qty){
      result.unresolved=true;result.reason='Exit liquidity was not observed at the decision time; cannot assert a complete fill.';
     }else{
-     const exitFee=feeCents/100*position.qty;
+     const exitFee=feeMode==='quadratic'?quadraticFee(position.qty,bid,feeRate):feeCents/100*position.qty;
      const pnl=position.qty*(bid-position.entry)-position.entryFee-exitFee;
      result.trade={ticker,signalAt:position.signalAt,entryAt:position.entryAt,exitAt:now,
       side:position.side.toUpperCase(),entry:position.entry,exit:bid,qty:position.qty,
@@ -84,25 +87,53 @@ function replayRound(round,{balance,stake,feeCents}){
    if(now-item.signalAt>8000||now<=item.signalAt){result.notFilled=true;result.reason='No next quote within 8 seconds of the signal.';attempted=true;continue;}
    const ask=q[item.plan.side+'Ask'],available=q[item.plan.side+'AskSize'],bid=q[item.plan.side+'Bid'];
    const fee=feeCents/100;
-   const qty=Math.floor(Math.min(available,stake/(ask+fee),balance/(ask+fee)));
+   let qty,entryFee;
+   if(feeMode==='quadratic'){
+    const check=feeAwareScalpGuard(item.plan,q,{stake,balance,feeRate,maxExposure,minNetRatio});
+    if(!check.allowed){
+     coverage.feeBlocked++;result.notFilled=true;result.reason='Common fee/risk gate rejected simulated entry: '+check.reason;
+     attempted=true;continue;
+    }
+    qty=check.qty;entryFee=check.openFee;
+   }else{
+    qty=Math.floor(Math.min(available,stake/(ask+fee),balance/(ask+fee)));
+    entryFee=fee*qty;
+   }
    if(!Number.isFinite(ask)||!Number.isFinite(available)||!Number.isFinite(bid)||ask<=0||
       ask>item.plan.entry+1e-8||qty<1||ask-bid>.03000001){
     result.notFilled=true;result.reason='Next observed ask exceeded the entry limit, available size, or spread restriction.';attempted=true;continue;
    }
    attempted=true;
    position={signalAt:item.signalAt,entryAt:now,lastAt:now,entry:ask,side:item.plan.side,qty,
-    entryFee:fee*qty,stop:item.plan.stop,target:item.plan.target};
+    entryFee,stop:item.plan.stop,target:item.plan.target};
    result.reason='Hypothetical entry; awaiting observed exit bid.';
    continue;
   }
-  // We count only fully observed candidates. Missing BRTI is not a pass.
-  if(!strict||attempted||!['UP','DOWN'].includes(reading.action))continue;
+  // All strategies use identical data-coverage windows. AstroTick-inspired
+  // branches additionally require recorded top-ten depth, never inferred depth.
+  if(!strict||attempted)continue;
+  let experimental=null,proposal=reading;
+  if(strategy==='astro'){
+   if(!depth)continue;
+   const ticks=round.brtiTicks.filter(x=>x.time<=feed.sourceTime);
+   experimental=astroExperiment({book:sample.bookLevels,quote:q,brtiTicks:ticks,
+    now:feed.sourceTime,closeAt,feeRate});
+   proposal={action:experimental.action,confidence:experimental.score===null?null:Math.round(Math.abs(experimental.score)*100),reason:experimental.reason};
+  }else if(strategy==='hybrid'){
+   if(!depth||!['UP','DOWN'].includes(reading.action))continue;
+   if(Math.abs(depth.skew)<.10||
+     (reading.action==='UP'&&depth.skew<=0)||(reading.action==='DOWN'&&depth.skew>=0)){
+    coverage.skewBlocked++;continue;
+   }
+  }
+  if(!['UP','DOWN'].includes(proposal.action))continue;
   // The live default plan is evaluated WITHOUT an assumed fee allowance.
   // Replay fees are deducted from hypothetical P/L separately; otherwise the
   // entry rules would differ from what the user sees on the live dashboard.
-  const plan=suggestPlan({reading,quote:q,samples:engine.samples,market,now,costCents:null});
-  result.signals.push({at:now,action:reading.action,confidence:reading.confidence,
-   planAvailable:plan.available,reason:plan.reason||reading.reason});
+  const plan=suggestPlan({reading:proposal,quote:q,samples:engine.samples,market,now,costCents:null});
+  result.signals.push({at:now,action:proposal.action,confidence:proposal.confidence,
+   skew:depth?.skew??null,heuristicPYes:experimental?.heuristicPYes??null,
+   planAvailable:plan.available,reason:plan.reason||proposal.reason});
   if(plan.available){
    pending={signalAt:now,plan};
   }
