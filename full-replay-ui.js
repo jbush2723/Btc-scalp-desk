@@ -20,6 +20,18 @@ export function installFullReplay(host,getBase){
  <p id="modelReplayCoverage" class="small muted">No replay coverage measured yet.</p>
  <p class="small muted">Hypothetical fills at the next recorded ask and later recorded bid require shown size. Gaps are never filled. Exits without demonstrated liquidity are unresolved, not profitable trades. No order placement or verified fills. This is not proof of a trading edge.</p>
  <div class="table-scroll"><table><thead><tr><th>Round</th><th>Side</th><th>Entry</th><th>Exit</th><th>Qty</th><th>Est. fees</th><th>Net P/L</th><th>Exit reason</th></tr></thead><tbody id="modelReplayTrades"></tbody></table></div>
+ </div>
+ <div class="scenario-card"><h3>Compare current, AstroTick-inspired and hybrid paper strategies</h3>
+ <p class="small muted">Uses the same recorder rounds, next-snapshot ask entries, observed-bid exit assumptions, standard quadratic fee estimate and risk caps. AstroTick-style results use actual saved top-ten book depth; old samples without depth are ineligible. Zero trades is not a zero-percent win rate.</p>
+ <div class="toolbar">
+ <label>Max daily paper loss ($)<input id="modelCompareDailyLoss" type="number" min="0" max="1000000" step="1" value="100"></label>
+ <label>Max trades / UTC day<input id="modelCompareDailyTrades" type="number" min="1" max="500" step="1" value="10"></label>
+ <label>Max exposure / paper trade ($)<input id="modelCompareExposure" type="number" min="1" max="1000000" step="1" value="50"></label>
+ <button type="button" id="modelCompareRun">Compare three paper strategies</button>
+ </div>
+ <p id="modelCompareStatus" role="status">Ready to compare once enough as-recorded depth and BRTI samples exist.</p>
+ <div class="table-scroll"><table><thead><tr><th>Strategy</th><th>Eligible snapshots</th><th>Signals</th><th>Exited trades</th><th>Wins</th><th>Est. net P/L</th><th>Max DD</th><th>Skipped by risk</th><th>Unresolved</th></tr></thead><tbody id="modelCompareRows"><tr><td colspan="9">No paper comparison run yet.</td></tr></tbody></table></div>
+ <p id="modelCompareCoverage" class="small muted">The experimental formulas are not calibrated; results are not proof of a profitable trading edge.</p>
  </div>`;
  host.insertAdjacentElement('afterend',panel);
  const $=id=>panel.querySelector('#'+id);
@@ -161,6 +173,46 @@ export function installFullReplay(host,getBase){
   void refresh();
  };
  $('modelRecorderRefresh').onclick=refresh;
+ async function compare(){
+  $('modelCompareRun').disabled=true;
+  text('modelCompareStatus','Comparing three experimental paper replays over the same saved rounds…');
+  try{
+   const params=new URLSearchParams({
+    bankroll:$('modelReplayBankroll').value,stake:$('modelReplayStake').value,
+    rounds:$('modelReplayRounds').value,daily_loss:$('modelCompareDailyLoss').value,
+    daily_trades:$('modelCompareDailyTrades').value,max_exposure:$('modelCompareExposure').value
+   });
+   const comparison=await get('/model/compare?'+params);
+   if(!Array.isArray(comparison.scenarios)||comparison.scenarios.length!==3)
+    throw Error('Invalid model comparison response');
+   const rows=$('modelCompareRows');rows.replaceChildren();
+   for(const item of comparison.scenarios){
+    const tr=document.createElement('tr');
+    const winPct=item.trades?Math.round(item.wins/item.trades*100)+'%':'—';
+    const cols=[item.label,
+     (item.covered?.modelEligible??0)+' / '+(item.covered?.snapshots??0),
+     item.signalCount??0,item.trades??0,
+     (item.wins??0)+' ('+winPct+')',money(item.pnl||0),
+     (100*(item.maxDrawdown||0)).toFixed(1)+'%',
+     item.risk?.riskBlocked??0,item.unresolved??0];
+    for(const col of cols){const td=document.createElement('td');td.textContent=String(col);tr.append(td);}
+    rows.append(tr);
+   }
+   const baseline=comparison.scenarios[0],astro=comparison.scenarios[1],hybrid=comparison.scenarios[2];
+   text('modelCompareStatus','Compared '+baseline.rounds+' recorded rounds · fee model: quadratic (estimated) · '+
+    'paper bankroll '+money(baseline.initialBankroll)+' · common exposure/daily loss/trade caps applied. '+
+    'The live entry model and real trading remain unchanged.');
+   text('modelCompareCoverage',
+    'Observed top-ten depth: '+(astro.covered.depthReady??0)+' / '+(astro.covered.snapshots??0)+
+    ' Astro samples. Astro fully eligible: '+astro.covered.modelEligible+
+    ' · hybrid fully eligible: '+hybrid.covered.modelEligible+
+    '. Depth missing: '+astro.covered.depthMissing+'. '+'If depth is missing, Astro and hybrid cannot be scored. '+
+    'Hypothetical profits exclude unresolved positions. Model probabilities are heuristic, not calibrated. '+
+    comparison.dataNote);
+  }catch(e){text('modelCompareStatus','Comparison unavailable: '+e.message);}
+  finally{$('modelCompareRun').disabled=false;}
+ }
+ $('modelCompareRun').onclick=compare;
  $('modelReplayRun').onclick=run;
  $('modelRecorderExport').onclick=exportData;
  equity([]);
