@@ -1,5 +1,18 @@
 # BTC Scalp Desk
 
+## Four-way 15-minute BTC model experiment (review branch, October 25, 2026)
+
+This branch adds a **paper-only** volatility-gap baseline as a fourth strategy alongside the established scalp rules, AstroTick-inspired momentum/book imbalance, and the prior hybrid. The live card **Volatility-gap baseline · 15m paper filter** displays estimated YES/NO settlement probabilities, strike gap measured in model sigma, and the fee-aware settlement-only gate. The original live BUY/WAIT, open-paper-position, and optional manual tracking logic are unchanged.
+
+The new `gap-baseline.js` is an independently implemented research adaptation of the M0 zero-drift normal/lognormal averaged-settlement idea in [schen9999/btc-15m-engine](https://github.com/schen9999/btc-15m-engine) and the confidence-gap filter in [darup67/kalshi-btc-agent](https://github.com/darup67/kalshi-btc-agent). It **does not** load Chronos-2, LightGBM, third-party models, or their historical calibration tables. It derives an illustrative per-second volatility estimate from five minutes of **actual** official BRTI observations at ten-second spacing, rejecting gaps, stale feeds and the final settlement minute (partial minute averages are not reconstructed). No substitute spot price is presented as official BRTI.
+
+The model's paper call needs modeled YES or NO probability of at least 95%, valid two-sided Kalshi quotes, displayed size, a spread of at most three cents, and at least two cents per contract of **modeled settlement-only EV** after an estimated quadratic entry fee. These are intentionally restrictive **uncalibrated research gates**, not observed 95% accuracy, a prediction of seven-minute resale profitability, or a proof of positive expected value. An early exit pays an additional fee and can be worse than the displayed bid. Do not transfer published accuracy statistics from the upstream projects to this adaptation.
+
+The recorder's **Compare four paper strategies** action now replays the gap model on the same saved rounds. Each strategy uses the same observed next-ask/observed-bid fill assumptions, quadratic fee estimate, loss caps, and uncertainty handling. The gap model needs five minutes of recorded source-time BRTI, while Astro/hybrid additionally require recorded order-book depth; the comparison shows each model's eligible snapshots so coverage differences are visible. All returns are hypothetical; no queue-priority or real fills are verified. No officially verified settlement-probability Brier score is claimed; future calibration requires sufficient independently verified contract resolutions.
+
+Run `npm test` for the baseline and existing replay tests. Browser-cache version 38 includes both new browser modules. Merge/redeploy is required to publish this branch to GitHub Pages/Render; creating this branch does not update the live site.
+
+
 Read-only BTC 15-minute Kalshi companion. Frontend: https://jbush2723.github.io/Btc-scalp-desk/
 
 ## Feed status and source decision (October 25, 2026)

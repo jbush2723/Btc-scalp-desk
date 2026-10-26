@@ -7,7 +7,7 @@ import {BrtiFeed} from './brti-feed.mjs';
 import {MarketRecorder} from './market-recorder.mjs';
 import {replayRecordedModel,compareRecordedStrategies} from './model-replay.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
-const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','paper-position.js','astro-experiment.js','astro-live-ui.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','full-replay-ui.js','settlement-forecast.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
+const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','paper-position.js','astro-experiment.js','astro-live-ui.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','full-replay-ui.js','settlement-forecast.js','gap-baseline.js','gap-live-ui.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
 
 const cryptoCache={at:0,data:null,pending:null};
