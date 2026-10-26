@@ -48,6 +48,16 @@ The current `render.yaml` specifies `plan: free`. Render Free instances spin dow
 - Before real money, evaluate **many** independent complete rounds and out-of-sample data. Compare against a baseline, monitor signal freshness and book gaps, and verify real Kalshi fees and execution assumptions. Reported balances exclude unresolved open exposure.
 - The private export file contains authorized historical BRTI observations; do not share it publicly. Never put Kalshi API secrets in the recorder files or a public repository.
 
+## Live hypothetical position, projected upside and audit cutoffs
+
+The dashboard now contains **Hypothetical open position · live HOLD / EXIT** directly after the BTC scalp cockpit. The paper monitor is independent of the manual, user-confirmed position tracker. It observes a **confirmed live signal and valid live entry plan** and waits for the NEXT fresh order-book quote, checking the intended buy-limit ceiling, spread and visible ask size. It never treats a signal itself as proof of a fill, and never sends an order.
+
+While the hypothetical entry is active it reports **HOLD / MONITOR, HOLD · CAUTION, TAKE PROFIT, STOP / EXIT, DATA UNAVAILABLE, or an unresolved missing-data state**, plus the recorded hypothetical entry, latest valid sell bid, gross bid-based return, quantity and a countdown. Profit/stop triggers are conditional on adequate displayed bid size. The monitoring window ends at the EARLIER of seven minutes after entry or one minute before the contract's official close. Quotes more than 15 seconds apart cause an unresolved observation rather than an invented exit; stale bid/return metrics are hidden. All values are hypothetical, *not* real positions, guaranteed fills, or execution advice.
+
+The separate **experimental projected gross return** is based on the observed previous ~30 seconds of the Kalshi YES contract's bid/ask midpoint. Its trend is adjusted for YES or NO and projected over the remaining holding interval using a damped 60-second momentum formula, bounded to a valid contract bid range. It may be positive **or negative**. **It is uncalibrated, not an estimated win probability, not validated expected return, and not a claim that a limit order will fill.** The independent **plan target gross upside** is shown alongside it so the plan's target is not confused with a prediction.
+
+The original 7-minute scalp audit now records the earlier of the same seven-minute horizon or one-minute pre-close buffer. Earlier exits are counted separately (`cutoff_exit`) from full 7-minute samples (`complete`), and only the last observed bid in the 15 seconds BEFORE the cutoff can mark a hypothetical exit. A genuine unexpected contract switch gets `market_changed`; a normal expired-contract rollover gets `market_closed` if no valid exit quote was observed. Disconnections are reported as `data_gap` or `exit_quote_missing`. Existing browser-local audit records remain in place; missing historical quotes are not retroactively guessed.
+
 ## Data behavior
 
 ### UP / DOWN / WAIT / SIT OUT signal
