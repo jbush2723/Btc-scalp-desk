@@ -5,9 +5,9 @@ import {timingSafeEqual} from 'node:crypto';
 import {createRelay,upstreamPath} from './relay.mjs';
 import {BrtiFeed} from './brti-feed.mjs';
 import {MarketRecorder} from './market-recorder.mjs';
-import {replayRecordedModel} from './model-replay.mjs';
+import {replayRecordedModel,compareRecordedStrategies} from './model-replay.mjs';
 const root=new URL('./',import.meta.url), relay=createRelay();
-const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','paper-position.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','full-replay-ui.js','settlement-forecast.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
+const assets=new Map([['/','index.html'],...['index.html','app.js','brti-ui.js','cryptometer-ui.js','signal-audit.js','market-context.js','brti-candles.js','round-history.js','settlement-audit.js','position-tracker.js','paper-position.js','astro-experiment.js','astro-live-ui.js','historical-replay.js','kalshi-history.js','historical-flow.js','history-storage.js','full-replay-ui.js','settlement-forecast.js','flow.js','signal.js','plan.js','chart.js','manual.js','config.js','styles.css','sw.js','manifest.webmanifest'].map(x=>['/'+x,x])]);
 const mime={html:'text/html',js:'text/javascript',css:'text/css',webmanifest:'application/manifest+json'};
 
 const cryptoCache={at:0,data:null,pending:null};
@@ -67,7 +67,7 @@ export function makeServer({brti=new BrtiFeed(),recorder=null}={}){
       if(!isAuthorized(req)){res.writeHead(403);res.end(JSON.stringify({status:'private_access_required',price:null}));return;}
       res.end(req.method==='HEAD'?'':JSON.stringify(brti.snapshot()));return;
     }
-    if(u.pathname==='/api/model/status'||u.pathname==='/api/model/replay'||u.pathname==='/api/model/export'){
+    if(u.pathname==='/api/model/status'||u.pathname==='/api/model/replay'||u.pathname==='/api/model/export'||u.pathname==='/api/model/compare'){
       res.setHeader('Content-Type','application/json; charset=utf-8');
       if(!isAuthorized(req)){res.writeHead(403);res.end(JSON.stringify({error:'Private BRTI viewing token required for model recorder access.'}));return;}
       if(u.pathname==='/api/model/status'){
@@ -81,12 +81,18 @@ export function makeServer({brti=new BrtiFeed(),recorder=null}={}){
         res.setHeader('Content-Disposition','attachment; filename="btc-scap-desk-observations.json"');
         res.end(req.method==='HEAD'?'':JSON.stringify({schema:1,source:'As-observed recorder; not a historic backfill',exportedAt:new Date().toISOString(),rounds:stored}));return;
       }
-      const report=replayRecordedModel(stored,{
+      const common={
         bankroll:Number(u.searchParams.get('bankroll')||1000),
         stake:Number(u.searchParams.get('stake')||50),
         feeCents:Number(u.searchParams.get('fee_cents')??1),
+        maxDailyLoss:Number(u.searchParams.get('daily_loss')??100),
+        maxDailyTrades:Number(u.searchParams.get('daily_trades')??10),
+        maxExposure:Number(u.searchParams.get('max_exposure')??50),
         maxRounds:limit
-      });
+      };
+      const report=u.pathname==='/api/model/compare'?
+        compareRecordedStrategies(stored,common):
+        replayRecordedModel(stored,common);
       if(report.error)res.statusCode=400;
       res.end(req.method==='HEAD'?'':JSON.stringify(report));return;
     }
