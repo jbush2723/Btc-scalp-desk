@@ -4,7 +4,7 @@ import {weightedBookSkew,quadraticFee,indexMomentum,astroExperiment,feeAwareScal
 
 const now=Date.now();
 const book={
- yes:[['invalid',4],[.19,90],[.18,110],[.17,20]],
+ yes:[['invalid',4],[.19,190],[.18,210],[.17,20]],
  no:[[.78,35],[.77,25],[.76,5]]
 };
 const quote={yesBid:.19,yesAsk:.22,noBid:.78,noAsk:.81,
@@ -15,7 +15,7 @@ test('weighted order-book skew uses price-weighted depths rather than top quote 
  const r=weightedBookSkew(book);
  assert.ok(r);
  assert.ok(r.skew>0);
- assert.equal(r.yesDepth,220);
+ assert.equal(r.yesDepth,420);
  assert.equal(r.noDepth,65);
  assert.equal(weightedBookSkew({yes:book.yes,no:[]}),null);
 });
@@ -35,6 +35,7 @@ test('index momentum requires 5m of observed as-of BRTI data',()=>{
 test('experimental signal never trades without real depth or sufficient BRTI',()=>{
  const ready=astroExperiment({book,quote,brtiTicks:ticks,now,closeAt:now+450000});
  assert.ok(ready.ready);
+ assert.equal(ready.action,'UP');
  assert.equal(astroExperiment({book:null,quote,brtiTicks:ticks,now,closeAt:now+450000}).action,'WAIT');
  assert.equal(astroExperiment({book,quote,brtiTicks:[],now,closeAt:now+450000}).action,'WAIT');
  assert.equal(astroExperiment({book,quote,brtiTicks:ticks,now,closeAt:now+59000}).action,'WAIT');
